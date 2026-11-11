@@ -124,6 +124,18 @@ correct match 0.64). The one miss is an idiom ("what will it set me back" meanin
 The OpenAI embedder is written against the official SDK but was not run. Re-run `scripts/eval_retrieval.py` after changing
 the model or the documents.
 
+## Deploy on your own server (Docker)
+
+```bash
+git clone https://github.com/niapard-commits/rag-chatbot-demo && cd rag-chatbot-demo
+cp .env.example .env        # then edit .env: ANTHROPIC_API_KEY=..., ADMIN_TOKEN=a-long-random-string
+docker compose up -d --build
+curl localhost:8000/health   # the chat page is at http://SERVER:8000/
+```
+
+Leads and bookings are kept in `./data` (survives updates). For HTTPS put a reverse proxy such as Caddy or nginx in front of port 8000.
+`Dockerfile` and `docker-compose.yml` were written but **not built in the development sandbox** (no Docker daemon there); the app itself was run with uvicorn. If the build fails on your server, send the error.
+
 ## Deploy (Render)
 
 `render.yaml` is a Render Blueprint: *New > Blueprint*, pick the repository, type `ANTHROPIC_API_KEY` in the dashboard

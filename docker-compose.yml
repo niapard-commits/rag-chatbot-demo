@@ -1,0 +1,19 @@
+# docker compose up -d --build        (put your keys in a file named .env next to this one, see .env.example)
+services:
+  chatbot:
+    build: .
+    ports: ["8000:8000"]
+    env_file: .env
+    environment:
+      QDRANT_URL: ${QDRANT_URL:-}
+    volumes:
+      - ./data:/srv/chatbot/data        # SQLite: leads and appointments
+      - ./knowledge:/srv/chatbot/knowledge   # edit the documents without rebuilding, then POST /admin/reindex
+    restart: unless-stopped
+    depends_on: [qdrant]
+
+  # Optional: only used when RETRIEVER=qdrant and QDRANT_URL=http://qdrant:6333 are set in .env
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    volumes: ["./qdrant_data:/qdrant/storage"]
+    restart: unless-stopped
