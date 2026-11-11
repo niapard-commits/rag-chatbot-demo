@@ -16,6 +16,8 @@ from .agent import ChatAgent
 from .booking import Calendar
 from .config import BASE_DIR, Settings
 from .crm import CRM
+from .gcal import GoogleCalendarClient, service_account_token_provider
+from .hubspot import HubSpot
 from .db import init_db
 from .llm import build_llm
 from .rag.retriever import build_retriever
@@ -38,18 +40,36 @@ class ChatIn(BaseModel):
         return value
 
 
+def build_google_calendar(settings: Settings):
+    """The Google Calendar client, or None when it is not configured or the key file cannot be read.
+    A mistake here must not stop the chatbot: it then works with the local calendar only."""
+    if not (settings.google_calendar_id and settings.google_service_account_file):
+        return None
+    try:
+        return GoogleCalendarClient(settings.google_calendar_id,
+                                    service_account_token_provider(settings.google_service_account_file),
+                                    settings.timezone, settings.google_api_base)
+    except Exception as exc:
+        logging.getLogger("chatbot").error("Google Calendar is switched off, the key file cannot be used: %s", exc)
+        return None
+
+
 def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     settings = settings or Settings()
     init_db(settings.db_path)
     retriever = build_retriever(settings)
+    hubspot = HubSpot(settings.hubspot_token, settings.hubspot_base_url,
+                      custom_props=settings.hubspot_custom_props) if settings.hubspot_token else None
     agent = ChatAgent(settings, retriever, llm or build_llm(settings), CRM(settings.db_path, settings.crm_webhook_url,
-                                         webhook_secret=settings.crm_webhook_secret),
+                                         webhook_secret=settings.crm_webhook_secret, hubspot=hubspot),
                       Calendar(settings.db_path, settings.open_hour, settings.close_hour, settings.slot_minutes,
-                               settings.max_booking_days))
+                               settings.max_booking_days, google=build_google_calendar(settings),
+                               business_name=settings.business_name))
     @asynccontextmanager
     async def lifespan(_app):
         yield
         agent.crm.flush()   # do not lose webhooks that are still being sent when the server stops
+        agent.calendar.flush()
 
     app = FastAPI(title="RAG chatbot demo", version="1.0", lifespan=lifespan)
 
@@ -103,7 +123,10 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     def health():
         return {"status": "ok", "chunks": len(retriever.chunks), "retriever": getattr(getattr(retriever, "primary", retriever), "__class__").__name__,
                 "search_degraded": getattr(retriever, "primary_active", True) is False,
-                "llm_chain": [p.name for p in agent.llm.providers]}
+                "llm_chain": [p.name for p in agent.llm.providers],
+                "hubspot": agent.crm.hubspot is not None,
+                "google_calendar": agent.calendar.google is not None,
+                "google_calendar_degraded": agent.calendar.google_degraded}
 
     @app.post("/chat")
     def chat(body: ChatIn, request: Request):

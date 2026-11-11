@@ -5,6 +5,8 @@ anthropic>=0.40
 openai>=1.40
 qdrant-client>=1.12   # only needed when RETRIEVER=qdrant
 # fastembed>=0.4      # only needed when EMBEDDER=fastembed (local embedding model)
+google-auth>=2.30   # only needed for Google Calendar (signs in with the service account key)
+requests>=2.31      # used by google-auth
 # tests
 pytest>=8
 httpx>=0.27

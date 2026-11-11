@@ -8,6 +8,7 @@ services:
       TRUST_PROXY: "1"                  # real visitor IP from the proxy's X-Forwarded-For header (for the per-IP limit)
     volumes:
       - ./data:/srv/chatbot/data        # SQLite: leads and appointments
+      - ./secrets:/srv/chatbot/secrets:ro    # Google service account key (see README), never commit it
       - ./knowledge:/srv/chatbot/knowledge   # edit the documents without rebuilding, then POST /admin/reindex
     mem_limit: 512m
     restart: unless-stopped

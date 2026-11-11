@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS leads (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     session_id TEXT,
     name TEXT, email TEXT, phone TEXT, service TEXT, note TEXT, score TEXT, score_reason TEXT,
+    hubspot_id TEXT,
     UNIQUE(session_id)
 );
 CREATE TABLE IF NOT EXISTS appointments (
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     session_id TEXT,
     name TEXT NOT NULL, contact TEXT NOT NULL, service TEXT NOT NULL,
     day TEXT NOT NULL, slot TEXT NOT NULL,
+    google_event_id TEXT,
     UNIQUE(day, slot)
 );
 """
@@ -29,9 +31,12 @@ def init_db(path: str) -> None:
         columns = {r["name"] for r in conn.execute("PRAGMA table_info(leads)")}
         if "note" not in columns:  # small migration for databases created by an older version
             conn.execute("ALTER TABLE leads ADD COLUMN note TEXT")
-        for column in ("score", "score_reason"):
+        for column in ("score", "score_reason", "hubspot_id"):
             if column not in columns:
                 conn.execute(f"ALTER TABLE leads ADD COLUMN {column} TEXT")
+        appointment_columns = {r["name"] for r in conn.execute("PRAGMA table_info(appointments)")}
+        if "google_event_id" not in appointment_columns:
+            conn.execute("ALTER TABLE appointments ADD COLUMN google_event_id TEXT")
 
 
 @contextmanager

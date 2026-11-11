@@ -80,6 +80,34 @@ CRM_WEBHOOK_SECRET=your-long-random-string
 Webhooks are sent in the background with 3 attempts, so a slow or broken CRM never delays the chat.
 If all attempts fail, the lead stays in SQLite. Details and what was tested: [n8n/README.md](n8n/README.md).
 
+## HubSpot and Google Calendar (optional, built in)
+
+Two ready adapters, switched on by settings in `.env`. Without the settings the bot uses SQLite only.
+
+**HubSpot (free CRM).** Create a *private app* in HubSpot, give it the scopes `crm.objects.contacts.read`/`write`
+(and `crm.schema.contacts.read`/`write` once, for the custom fields) and set `HUBSPOT_TOKEN=...`. Every lead becomes a
+contact: found by e-mail (no duplicates), then updated by the stored HubSpot id. Besides name, e-mail and phone the bot
+writes five custom properties: service, lead score, score reason, note, appointment.
+`python -m scripts.check_integrations --create-properties` creates them. Without them the contact is still saved with the standard fields.
+
+**Google Calendar.** Create a service account (Google Cloud, Calendar API enabled), share your calendar with its e-mail
+with the permission *Make changes to events*, save the JSON key as `secrets/google-key.json` and set
+
+```
+GOOGLE_CALENDAR_ID=you@example.com
+GOOGLE_SERVICE_ACCOUNT_FILE=/srv/chatbot/secrets/google-key.json
+TIMEZONE=Europe/Bratislava
+```
+
+Busy times of that calendar are not offered to visitors (an event you add by hand blocks the slot), and every confirmed
+booking becomes an event. SQLite still guards against double booking.
+
+**If a service is down the chat keeps working.** HubSpot or Google errors are logged, the lead and the booking stay in
+SQLite, `/health` shows `google_calendar_degraded`. Calls run with timeouts and retries (and in the background where the visitor would wait).
+
+`python -m scripts.check_integrations --write-test` checks the token, the key file, the sharing and permissions, and
+creates and removes one test contact and one test event, with a plain explanation of what to fix if something fails.
+
 ## Qdrant vector database (optional)
 
 BM25 in memory is the default: no model, no API key, nothing to run. For a larger knowledge base you can keep the
@@ -157,11 +185,13 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 118 tests, no network, no API keys
+python -m pytest -q       # 153 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,
 lead saving, handover notes, translation and query rewriting, malformed model output, the LLM fallback chain and the HTTP API.
+The HubSpot and Google Calendar adapters are tested against fake servers that behave like the real APIs (duplicates, missing fields,
+retries, a deleted contact, a calendar not shared, services down), including the real service-account sign-in code with a throw-away key.
 
 ### Red-team run
 
@@ -187,15 +217,15 @@ problems this test found that the mock-model tests had missed.
 - Replies take about 2 to 4 seconds. Answers are not streamed word by word.
 - Chat sessions are kept in memory (lost on restart, one process). For several servers store them in Redis or the database.
 - SQLite is fine for a demo and small business. For heavy traffic use PostgreSQL.
-- The calendar is a simple built-in one. To use Google Calendar or Calendly, replace `app/booking.py` with an adapter.
-- The n8n workflow was tested with an HTTP stand-in for the CRM, not with a real Google Sheets or HubSpot account.
+- The built-in calendar can be combined with Google Calendar (see above). Cancelling or moving a booking is not supported: the bot hands such requests to a human.
+- The n8n workflow was tested with an HTTP stand-in for the CRM. The HubSpot and Google Calendar adapters were tested against fake servers; see docs/live_test.md for what has been run against the real services.
 - No authentication of visitors, no payment, no spam protection beyond the per-session rate limit.
 - All business data in `knowledge/` is made up.
 
 ## Project layout
 
 ```
-app/        agent, llm, booking, crm, prompts, api (main.py), rag/
+app/        agent, llm, booking, crm, hubspot, gcal, prompts, api (main.py), rag/
 knowledge/  your documents (markdown)
 static/     the chat page
 tests/      pytest tests

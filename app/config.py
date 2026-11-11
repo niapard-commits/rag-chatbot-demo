@@ -44,6 +44,16 @@ class Settings:
     crm_webhook_url: str = os.getenv("CRM_WEBHOOK_URL", "")
     crm_webhook_secret: str = os.getenv("CRM_WEBHOOK_SECRET", "")   # sent as the X-Webhook-Secret header
     admin_token: str = os.getenv("ADMIN_TOKEN", "")
+    # HubSpot (free CRM): a "private app" access token turns every lead into a HubSpot contact.
+    hubspot_token: str = os.getenv("HUBSPOT_TOKEN", "")
+    hubspot_base_url: str = os.getenv("HUBSPOT_BASE_URL", "https://api.hubapi.com")
+    hubspot_custom_props: bool = os.getenv("HUBSPOT_CUSTOM_PROPS", "1") == "1"
+    # Google Calendar: the id (usually an e-mail address) of a calendar that is shared with the service account,
+    # and the path of that service account's JSON key file. Both are needed to turn the integration on.
+    google_calendar_id: str = os.getenv("GOOGLE_CALENDAR_ID", "")
+    google_service_account_file: str = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+    google_api_base: str = os.getenv("GOOGLE_API_BASE", "https://www.googleapis.com/calendar/v3")
+    timezone: str = os.getenv("TIMEZONE", "Europe/Bratislava")   # the time zone of the opening hours
     # Booking
     open_hour: int = int(os.getenv("OPEN_HOUR", "9"))
     close_hour: int = int(os.getenv("CLOSE_HOUR", "17"))
