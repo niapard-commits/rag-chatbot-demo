@@ -116,11 +116,13 @@ in-memory BM25 search. Qdrant dies while running, every search falls back to BM2
 before the next try (`/health` shows `"search_degraded": true`). The embedding service is down at search time, only the
 word search is used. Tested by killing a real Qdrant 1.20 server under a running app.
 
-**What was and was not tested.** The hybrid code runs against a real Qdrant 1.20 server and embedded mode, with unit tests
-(fake embedder) and a live Claude conversation. The development sandbox could not download `bge`/`MiniLM` models, so
-`fastembed` and `OpenAI` embeddings are **not yet run end to end here**. The eval script ran with small spaCy word vectors:
-hybrid found 11 of 13 test questions, plain BM25 7 of 13. Real embedding models should do better, but run
-`scripts/eval_retrieval.py` yourself and tune `DENSE_MIN_SCORE` before relying on it.
+**What was tested.** Hybrid search runs against a real Qdrant server and embedded mode, with unit tests (fake embedder)
+and a live Claude conversation. The GitHub Actions job `hybrid-search-eval` runs the real `BAAI/bge-small-en-v1.5` model
+through `fastembed`: on 13 questions written in other words than the documents, **hybrid found 12, plain BM25 found 7**,
+and all 3 off-topic questions correctly found nothing (`DENSE_MIN_SCORE=0.6`: highest off-topic cosine 0.58, lowest
+correct match 0.64). The one miss is an idiom ("what will it set me back" meaning "how much does it cost").
+The OpenAI embedder is written against the official SDK but was not run. Re-run `scripts/eval_retrieval.py` after changing
+the model or the documents.
 
 ## Deploy (Render)
 
@@ -153,7 +155,7 @@ problems this test found that the mock-model tests had missed.
 
 - The Claude adapter was tested live (see `docs/live_test.md`). The OpenAI adapter is written against the official SDK
   but was **not run against the live API**: it is covered only by fake failing providers in the tests. Try it with your key before relying on the fallback.
-- The Qdrant retriever was tested live with Claude (English and Ukrainian) on a Qdrant 1.20 server and in embedded mode. Dense search with real embedding models (fastembed, OpenAI) is implemented but was not run in the sandbox (see the Qdrant section).
+- The Qdrant retriever was tested live with Claude (English and Ukrainian) on a Qdrant 1.20 server and in embedded mode. Dense search was verified with the fastembed model in CI; the OpenAI embedder was not run (see the Qdrant section).
 - Replies take about 2 to 4 seconds. Answers are not streamed word by word.
 - Chat sessions are kept in memory (lost on restart, one process). For several servers store them in Redis or the database.
 - SQLite is fine for a demo and small business. For heavy traffic use PostgreSQL.
