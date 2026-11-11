@@ -6,6 +6,7 @@ plain code after validation, so a wrong or invented model answer can never creat
 import json
 import logging
 import re
+import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime
 
@@ -23,7 +24,8 @@ LEAD_SCORES = ("hot", "warm", "cold")
 MAX_HISTORY = 8
 MAX_SESSIONS = 500
 MAX_CONTEXT_CHUNKS = 14
-EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$")
+EMAIL_RE = re.compile(r"^\w[\w.+-]*@[\w-]+(?:\.[\w-]+)+$")
+PHONE_RE = re.compile(r"^[+(]?[\d\s().-]{6,24}$")
 FALLBACK_REPLY = ("Sorry, I am having technical trouble right now. Please try again in a minute "
                   "or leave your name and phone number and our team will call you back.")
 
@@ -49,18 +51,26 @@ def parse_model_output(raw: str) -> dict:
     return {"reply": plain or FALLBACK_REPLY, "intent": "question", "fields": {}}
 
 
+def clean_text(value: str, limit: int) -> str:
+    """Free text from a visitor ends up in a CRM, a spreadsheet or an e-mail. Remove what must never get there:
+    control and invisible formatting characters (zero-width, right-to-left override, null bytes), and a leading
+    = + - @ which a spreadsheet would run as a formula (CSV / Google Sheets formula injection)."""
+    kept = "".join(" " if ch in "\n\r\t" else ch for ch in value if ch in "\n\r\t" or unicodedata.category(ch)[0] != "C")
+    return re.sub(r"\s+", " ", kept).strip().lstrip("=+-@ ")[:limit].strip()
+
+
 def clean_fields(fields: dict, services: list[str] | None = None) -> dict:
     """Keep only values that look valid. Anything else is dropped, so the bot asks again.
     If `services` is given, "service" must be one of them (case-insensitive) and is stored with the canonical spelling."""
     out = {}
     name = fields.get("name")
-    if isinstance(name, str) and 1 < len(name.strip()) <= 60:
-        out["name"] = name.strip()
+    if isinstance(name, str) and 1 < len(clean_text(name, 200)) <= 60 and any(c.isalpha() for c in name):
+        out["name"] = clean_text(name, 60)
     email = fields.get("email")
     if isinstance(email, str) and EMAIL_RE.match(email.strip()):
         out["email"] = email.strip()
     phone = fields.get("phone")
-    if isinstance(phone, str) and 7 <= len(re.sub(r"\D", "", phone)) <= 15:
+    if isinstance(phone, str) and PHONE_RE.match(phone.strip()) and 7 <= len(re.sub(r"\D", "", phone)) <= 15:
         out["phone"] = phone.strip()
     service = fields.get("service")
     if isinstance(service, str) and 1 < len(service.strip()) <= 60:
@@ -74,14 +84,14 @@ def clean_fields(fields: dict, services: list[str] | None = None) -> dict:
     if isinstance(lang, str) and re.fullmatch(r"[A-Za-z]{2,3}", lang.strip()):
         out["language"] = lang.strip().lower()
     note = fields.get("note")
-    if isinstance(note, str) and note.strip():
-        out["note"] = note.strip()[:300]
+    if isinstance(note, str) and clean_text(note, 300):
+        out["note"] = clean_text(note, 300)
     score = fields.get("score")
     if isinstance(score, str) and score.strip().lower() in LEAD_SCORES:
         out["score"] = score.strip().lower()
         reason = fields.get("score_reason")
-        if isinstance(reason, str) and reason.strip():
-            out["score_reason"] = reason.strip()[:200]
+        if isinstance(reason, str) and clean_text(reason, 200):
+            out["score_reason"] = clean_text(reason, 200)
     day = fields.get("date")
     if isinstance(day, str):
         try:

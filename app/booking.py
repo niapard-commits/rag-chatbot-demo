@@ -31,8 +31,9 @@ class Booking:
 
 
 class Calendar:
-    def __init__(self, db_path: str, open_hour: int = 9, close_hour: int = 17, slot_minutes: int = 30):
-        self.db_path = db_path
+    def __init__(self, db_path: str, open_hour: int = 9, close_hour: int = 17, slot_minutes: int = 30,
+                 max_days: int = 180):
+        self.db_path, self.max_days = db_path, max_days
         self.open_hour, self.close_hour, self.slot_minutes = open_hour, close_hour, slot_minutes
 
     def all_slots(self) -> list[str]:
@@ -75,6 +76,8 @@ class Calendar:
                 f"every {self.slot_minutes} minutes (for example 09:00 or 09:30).")
         if datetime.combine(d, time.fromisoformat(slot)) <= (now or datetime.now()):
             raise BookingError("That time is already in the past. Please choose a later date or time.")
+        if d > (now or datetime.now()).date() + timedelta(days=self.max_days):
+            raise BookingError(f"We can book up to {self.max_days} days ahead. Please choose an earlier date.")
         try:
             with connect(self.db_path) as conn:
                 cur = conn.execute(

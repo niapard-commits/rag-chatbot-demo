@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .agent import ChatAgent
 from .booking import Calendar
@@ -30,6 +30,13 @@ class ChatIn(BaseModel):
     session_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     message: str = Field(min_length=1, max_length=1000)
 
+    @field_validator("message")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("The message is empty")
+        return value
+
 
 def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     settings = settings or Settings()
@@ -37,7 +44,8 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
     retriever = build_retriever(settings)
     agent = ChatAgent(settings, retriever, llm or build_llm(settings), CRM(settings.db_path, settings.crm_webhook_url,
                                          webhook_secret=settings.crm_webhook_secret),
-                      Calendar(settings.db_path, settings.open_hour, settings.close_hour, settings.slot_minutes))
+                      Calendar(settings.db_path, settings.open_hour, settings.close_hour, settings.slot_minutes,
+                               settings.max_booking_days))
     @asynccontextmanager
     async def lifespan(_app):
         yield

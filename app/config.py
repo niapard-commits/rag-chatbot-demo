@@ -48,6 +48,7 @@ class Settings:
     open_hour: int = int(os.getenv("OPEN_HOUR", "9"))
     close_hour: int = int(os.getenv("CLOSE_HOUR", "17"))
     slot_minutes: int = int(os.getenv("SLOT_MINUTES", "30"))
+    max_booking_days: int = int(os.getenv("MAX_BOOKING_DAYS", "180"))   # how far ahead a visit can be booked
     top_k: int = int(os.getenv("TOP_K", "3"))
     # Where the knowledge base is searched: "bm25" (in memory, no extra service) or "qdrant" (a vector database).
     retriever: str = os.getenv("RETRIEVER", "bm25").lower()
