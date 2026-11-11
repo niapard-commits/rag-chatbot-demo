@@ -15,13 +15,13 @@ The demo business is a fictional dental clinic ("Bright Smile Dental"). Replace 
 | --- | --- |
 | Answers from your FAQ, documents, prices | Markdown files in `knowledge/` are split into sections and searched with BM25. The best sections go into the prompt. If nothing matches, the bot says it does not know. |
 | Updatable knowledge base | Edit or add `.md` files, then call `POST /admin/reindex`. No restart needed. |
-| Lead qualification | The model finds out the needed service and politely asks for name and email or phone, one thing at a time. Only services from a fixed list can be booked. |
+| Lead qualification | The model finds out the needed service, asks one short question about timing when it is unknown, and politely collects name and email or phone, one thing at a time. It rates every lead **hot / warm / cold** with a one-sentence reason (hot: urgent problem or wants a date; warm: interested in a service or price; cold: general information). A confirmed booking is always hot (set by code, not by the model). Score and reason are stored with the lead, sent to the CRM, and the n8n workflow alerts sales about hot leads. Only services from a fixed list can be booked. |
 | Appointment booking | Weekday opening hours, fixed slots, no double booking. If a slot is taken the bot offers free times. **The bot shows a summary with the weekday and books only after an explicit "yes".** |
 | Any language | The question is rewritten into an English search query when needed, so Ukrainian, Slovak or any other language finds the English documents. Booking messages are translated for the visitor. |
 | Handover to a human | If the bot cannot answer, the visitor's question is saved as a note together with their contact details in the CRM. |
 | CRM | Leads are saved in SQLite. If `CRM_WEBHOOK_URL` is set (n8n, Make, Zapier, any API) every lead and appointment is also POSTed there, signed with a secret header, in the background, with retries. A ready n8n workflow is included. |
 | LLM fallback | `LLM_PROVIDERS=anthropic,openai`: if Claude fails (timeout, rate limit, outage) the request goes to OpenAI. |
-| Handover | Folder of code, 82 tests, a live test script with a real transcript, `.env.example`, this README. |
+| Handover | Folder of code, 94 tests, a live test script with a real transcript, `.env.example`, this README. |
 
 ## How it is built
 
@@ -133,7 +133,7 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 82 tests, no network, no API keys
+python -m pytest -q       # 94 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,

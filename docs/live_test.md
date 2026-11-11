@@ -237,3 +237,17 @@ The unit tests (mock model) were green, but real conversations showed problems t
 
 **Bot:** Sorry, I can't give out discount codes, and I don't have any information about discounts. If you'd like, I can pass that question to the team, or help you book a Check-up, Cleaning, Teeth whitening, Filling or Orthodontic consultation. *(3.8 s)*
 
+
+
+## Lead qualification (real Claude, `python scripts/live_eval.py q_hot q_warm q_cold booking_natural`)
+
+| Visitor says | Score the model gave | Reason it wrote |
+| --- | --- | --- |
+| "I woke up with a terrible toothache and one side of my face is swollen", then "Can you fit me in today?" + name and phone | **hot** | Severe toothache and facial swelling, asks to be seen today. |
+| "How much does teeth whitening cost?", then "I might do it at some point" + name and email | **warm** | Asked the price of teeth whitening, only plans to do it at some point. |
+| Opening hours, parking, then "just collecting information for my mother" + name and email | **cold** | Only collecting general information for her mother. |
+| Natural booking request, then "yes" to the summary | **hot** (set by code) | Booked Teeth whitening on 2026-11-12 at 14:00. |
+
+The bot also asked one natural timing question ("Are you planning this soon, or just looking ahead?") and no more
+than one per message. Limits: three conversations are a smoke test, not a measurement of scoring accuracy. Review the
+reasons in your own CRM for a week and adjust the rules in `app/prompts.py`.

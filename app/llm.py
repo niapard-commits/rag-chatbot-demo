@@ -39,6 +39,8 @@ REPLY_TOOL = {
                     "name": _NULLABLE_STR, "email": _NULLABLE_STR, "phone": _NULLABLE_STR,
                     "service": _NULLABLE_STR, "date": _NULLABLE_STR, "time": _NULLABLE_STR,
                     "note": _NULLABLE_STR, "confirm": {"type": ["boolean", "null"]},
+                    "score": {"type": ["string", "null"], "enum": ["hot", "warm", "cold", None]},
+                    "score_reason": _NULLABLE_STR,
                     "language": _NULLABLE_STR,
                 },
             },
@@ -142,6 +144,7 @@ class MockLLM:
                 fields["service"] = service
                 break
 
+        fields["score"], fields["score_reason"] = self._score(low, fields, state)
         fields["confirm"] = None
         if state.get("awaiting_confirmation"):
             if re.search(r"\b(yes|yeah|ok|okay|confirm|sure|please do|book it)\b", low):
@@ -168,6 +171,18 @@ class MockLLM:
             reply = ("I do not have that information. I can pass your question to our team: "
                      "please leave your name and an email or phone number.")
         return json.dumps({"reply": reply, "intent": intent, "fields": fields})
+
+    @staticmethod
+    def _score(low: str, fields: dict, state: dict):
+        """Very simple lead scoring for the offline demo; the real model judges from the whole conversation."""
+        if re.search(r"\b(pain|hurts?|toothache|urgent|urgently|broken|swollen|emergency|asap)\b", low):
+            return "hot", "Reports pain or an urgent problem."
+        if fields["date"] or fields["time"] or re.search(r"\b(book|appointment)\b", low):
+            return "hot", "Wants to book and named a date or time." if (fields["date"] or fields["time"]) \
+                else "Wants to book an appointment."
+        if fields["service"] or re.search(r"\b(price|cost|how much)\b", low):
+            return "warm", "Asked about a service or its price, no plan yet."
+        return None, None
 
     @staticmethod
     def _ask_next(s: dict, today: date) -> str:

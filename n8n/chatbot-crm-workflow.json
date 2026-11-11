@@ -75,7 +75,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "parameters": {
-        "jsCode": "// Turn the bot's payload into one flat record that any CRM node can use.\nconst b = $input.first().json.body || {};\nreturn [{ json: {\n  event: b.event,\n  session_id: b.session_id || null,\n  name: b.name || null,\n  email: b.email || null,\n  phone: b.phone || null,\n  contact: b.email || b.phone || b.contact || null,\n  service: b.service || null,\n  note: b.note || null,\n  day: b.day || null,\n  slot: b.slot || null,\n  received_at: new Date().toISOString()\n} }];"
+        "jsCode": "// Turn the bot's payload into one flat record that any CRM node can use.\nconst b = $input.first().json.body || {};\nreturn [{ json: {\n  event: b.event,\n  session_id: b.session_id || null,\n  name: b.name || null,\n  email: b.email || null,\n  phone: b.phone || null,\n  contact: b.email || b.phone || b.contact || null,\n  service: b.service || null,\n  note: b.note || null,\n  score: b.score || null,              // hot | warm | cold, set by the chatbot's lead qualification\n  score_reason: b.score_reason || null,\n  day: b.day || null,\n  slot: b.slot || null,\n  received_at: new Date().toISOString()\n} }];"
       },
       "position": [
         480,
@@ -168,9 +168,62 @@
         }
       },
       "position": [
-        1200,
+        1680,
         100
       ]
+    },
+    {
+      "id": "n9",
+      "name": "Hot lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $('Normalize data').item.json.score }}",
+              "rightValue": "hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "position": [
+        1200,
+        -100
+      ]
+    },
+    {
+      "id": "n10",
+      "name": "Alert sales: hot lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:9100/alerts",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: 'HOT LEAD: ' + $('Normalize data').item.json.name + ' (' + $('Normalize data').item.json.contact + ') - ' + $('Normalize data').item.json.score_reason, session_id: $('Normalize data').item.json.session_id }) }}",
+        "options": {}
+      },
+      "position": [
+        1440,
+        -200
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -236,7 +289,7 @@
       "main": [
         [
           {
-            "node": "Reply OK to the bot",
+            "node": "Hot lead?",
             "type": "main",
             "index": 0
           }
@@ -244,6 +297,35 @@
       ]
     },
     "Create appointment in CRM": {
+      "main": [
+        [
+          {
+            "node": "Reply OK to the bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot lead?": {
+      "main": [
+        [
+          {
+            "node": "Alert sales: hot lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply OK to the bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert sales: hot lead": {
       "main": [
         [
           {

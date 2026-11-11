@@ -25,17 +25,25 @@ class CRM:
         self.retry_delays = (1.0, 3.0)     # pauses between the 3 attempts
 
     def save_lead(self, session_id: str, name: str, email: str | None, phone: str | None,
-                  service: str | None, note: str | None = None) -> bool:
-        """Insert or update the lead of this chat session. Returns True if it is a new lead."""
+                  service: str | None, note: str | None = None, score: str | None = None,
+                  score_reason: str | None = None) -> bool:
+        """Insert or update the lead of this chat session. Returns True if it is a new lead.
+        An update never erases a value that is already stored (for example the service, which the chat forgets
+        after a booking): a missing value in the new data keeps the old one."""
         with connect(self.db_path) as conn:
             exists = conn.execute("SELECT 1 FROM leads WHERE session_id = ?", (session_id,)).fetchone()
             conn.execute(
-                """INSERT INTO leads (session_id, name, email, phone, service, note) VALUES (?,?,?,?,?,?)
-                   ON CONFLICT(session_id) DO UPDATE SET name=excluded.name, email=excluded.email,
-                   phone=excluded.phone, service=excluded.service, note=excluded.note""",
-                (session_id, name, email, phone, service, note))
-        self._send_webhook({"event": "lead", "session_id": session_id, "name": name,
-                            "email": email, "phone": phone, "service": service, "note": note})
+                """INSERT INTO leads (session_id, name, email, phone, service, note, score, score_reason)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(session_id) DO UPDATE SET name=excluded.name,
+                   email=COALESCE(excluded.email, email), phone=COALESCE(excluded.phone, phone),
+                   service=COALESCE(excluded.service, service), note=COALESCE(excluded.note, note),
+                   score=COALESCE(excluded.score, score), score_reason=COALESCE(excluded.score_reason, score_reason)""",
+                (session_id, name, email, phone, service, note, score, score_reason))
+            row = dict(conn.execute("SELECT * FROM leads WHERE session_id = ?", (session_id,)).fetchone())
+        self._send_webhook({"event": "lead", "session_id": session_id, "name": row["name"], "email": row["email"],
+                            "phone": row["phone"], "service": row["service"], "note": row["note"],
+                            "score": row["score"], "score_reason": row["score_reason"]})
         return not exists
 
     def notify_booking(self, session_id: str, name: str, contact: str, service: str, day: str, slot: str) -> None:

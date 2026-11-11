@@ -19,6 +19,7 @@ from .rag.retriever import BM25Retriever
 log = logging.getLogger("chatbot.agent")
 
 MAX_MESSAGE_CHARS = 1000
+LEAD_SCORES = ("hot", "warm", "cold")
 MAX_HISTORY = 8
 MAX_SESSIONS = 500
 MAX_CONTEXT_CHUNKS = 14
@@ -75,6 +76,12 @@ def clean_fields(fields: dict, services: list[str] | None = None) -> dict:
     note = fields.get("note")
     if isinstance(note, str) and note.strip():
         out["note"] = note.strip()[:300]
+    score = fields.get("score")
+    if isinstance(score, str) and score.strip().lower() in LEAD_SCORES:
+        out["score"] = score.strip().lower()
+        reason = fields.get("score_reason")
+        if isinstance(reason, str) and reason.strip():
+            out["score_reason"] = reason.strip()[:200]
     day = fields.get("date")
     if isinstance(day, str):
         try:
@@ -137,6 +144,8 @@ class ChatAgent:
 
         confirm = parsed["fields"].get("confirm") if isinstance(parsed["fields"], dict) else None
         state.update(clean_fields(parsed["fields"], self.settings.services))
+        if state.get("_booked_reason"):  # once a visitor has booked, the model cannot lower the score again
+            state["score"], state["score_reason"] = "hot", state["_booked_reason"]
         if parsed["intent"] == "book":
             state["booking_started"] = True
 
@@ -183,11 +192,12 @@ class ChatAgent:
     def _maybe_save_lead(self, session_id: str, state: dict) -> None:
         if not (state.get("name") and (state.get("email") or state.get("phone"))):
             return
-        signature = (state.get("name"), state.get("email"), state.get("phone"), state.get("service"), state.get("note"))
+        signature = (state.get("name"), state.get("email"), state.get("phone"), state.get("service"), state.get("note"),
+                     state.get("score"), state.get("score_reason"))
         if state.get("_lead_sig") == signature:
             return
         self.crm.save_lead(session_id, state["name"], state.get("email"), state.get("phone"),
-                           state.get("service"), state.get("note"))
+                           state.get("service"), state.get("note"), state.get("score"), state.get("score_reason"))
         state["_lead_sig"] = signature
 
     def _maybe_book(self, session_id: str, state: dict, now: datetime | None, confirm=None):
@@ -222,6 +232,10 @@ class ChatAgent:
             state.pop("time", None)
             return str(exc) + " Which other day and time would you prefer?", None
         self.crm.notify_booking(session_id, state["name"], contact, b.service, b.day, b.slot)
+        # A confirmed booking is the strongest buying signal there is: the code sets the score, not the model.
+        state["_booked_reason"] = f"Booked {b.service} on {b.day} at {b.slot}."
+        state["score"], state["score_reason"] = "hot", state["_booked_reason"]
+        self._maybe_save_lead(session_id, state)
         for key in ("service", "date", "time", "booking_started"):
             state.pop(key, None)
         info = {"id": b.id, "service": b.service, "day": b.day, "time": b.slot}
