@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bright Smile Dental: assistant demo</title>
+<style>
+  :root { --brand:#1a7f64; --bg:#f4f7f6; --text:#1c2b27; --muted:#6b7b76; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text);
+         display:flex; justify-content:center; padding:16px; }
+  .chat { width:100%; max-width:520px; height:calc(100vh - 32px); max-height:760px; background:#fff; border-radius:16px;
+          box-shadow:0 6px 30px rgba(0,0,0,.08); display:flex; flex-direction:column; overflow:hidden; }
+  header { background:var(--brand); color:#fff; padding:14px 18px; }
+  header h1 { margin:0; font-size:17px; }
+  header p { margin:2px 0 0; font-size:12.5px; opacity:.85; }
+  #log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:85%; padding:10px 13px; border-radius:14px; line-height:1.4; font-size:14.5px; white-space:pre-wrap; }
+  .bot { background:#eef3f1; align-self:flex-start; border-bottom-left-radius:4px; }
+  .me  { background:var(--brand); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+  .ok  { background:#e3f6ec; border:1px solid #9bd6b6; }
+  .src { font-size:11px; color:var(--muted); margin-top:5px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 8px; }
+  .chips button { border:1px solid #cfd9d5; background:#fff; border-radius:999px; padding:6px 11px; font-size:12.5px; cursor:pointer; color:var(--text); }
+  .chips button:hover { border-color:var(--brand); color:var(--brand); }
+  form { display:flex; gap:8px; padding:12px; border-top:1px solid #e6ece9; }
+  input { flex:1; border:1px solid #cfd9d5; border-radius:10px; padding:11px 12px; font-size:15px; outline:none; }
+  input:focus { border-color:var(--brand); }
+  form button { background:var(--brand); color:#fff; border:0; border-radius:10px; padding:0 18px; font-size:15px; cursor:pointer; }
+  form button:disabled { opacity:.5; cursor:default; }
+</style>
+</head>
+<body>
+<div class="chat">
+  <header>
+    <h1>Bright Smile Dental</h1>
+    <p>Virtual assistant · sample business for a portfolio demo</p>
+  </header>
+  <div id="log" aria-live="polite"></div>
+  <div class="chips" id="chips"></div>
+  <form id="form">
+    <input id="text" autocomplete="off" placeholder="Ask a question or book a visit…" maxlength="1000" aria-label="Message">
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById("log"), form = document.getElementById("form"),
+      text = document.getElementById("text"), send = document.getElementById("send");
+let sid;
+try { sid = localStorage.getItem("sid"); } catch (e) {}
+if (!sid) { sid = "s" + Math.random().toString(36).slice(2, 12); try { localStorage.setItem("sid", sid); } catch (e) {} }
+
+function add(cls, content, sources) {
+  const el = document.createElement("div");
+  el.className = "msg " + cls;
+  el.textContent = content;
+  if (sources && sources.length) {
+    const s = document.createElement("div");
+    s.className = "src";
+    s.textContent = "Sources: " + sources.join(" · ");
+    el.appendChild(s);
+  }
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+
+async function ask(message) {
+  add("me", message);
+  send.disabled = true;
+  const wait = add("bot", "…");
+  try {
+    const res = await fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+                                       body: JSON.stringify({ session_id: sid, message }) });
+    if (!res.ok) throw new Error(res.status === 429 ? "Too many messages, please wait a moment." : "Server error " + res.status);
+    const data = await res.json();
+    wait.remove();
+    add("bot" + (data.booking ? " ok" : ""), data.reply, data.sources);
+  } catch (e) {
+    wait.textContent = e.message || "Something went wrong. Please try again.";
+  } finally {
+    send.disabled = false;
+    text.focus();
+  }
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const m = text.value.trim();
+  if (!m) return;
+  text.value = "";
+  ask(m);
+});
+
+add("bot", "Hello! I can answer questions about our services, prices and opening hours, and book an appointment for you.");
+const chips = document.getElementById("chips");
+["What are your opening hours?", "How much is teeth whitening?", "I want to book an appointment"].forEach((q) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = q;
+  b.onclick = () => ask(q);
+  chips.appendChild(b);
+});
+</script>
+</body>
+</html>

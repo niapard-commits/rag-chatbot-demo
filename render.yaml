@@ -1,0 +1,20 @@
+# Render Blueprint: staging deployment of the chatbot. New > Blueprint > pick this repository.
+services:
+  - type: web
+    name: rag-chatbot-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: LLM_PROVIDERS
+        value: anthropic          # use "anthropic,openai" when both keys are set; "mock" for a keyless demo
+      - key: ANTHROPIC_API_KEY
+        sync: false               # you type it in the Render dashboard; it is never stored in the repository
+      - key: ADMIN_TOKEN
+        generateValue: true       # protects /admin/leads and /admin/reindex
+      - key: RETRIEVER
+        value: bm25               # qdrant needs a Qdrant server or Qdrant Cloud (QDRANT_URL, QDRANT_API_KEY)

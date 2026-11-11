@@ -1,0 +1,262 @@
+{
+  "id": "chatbotCrm0001",
+  "name": "Chatbot leads and appointments to CRM",
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "Chatbot webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot-events",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "chatbot-events-webhook"
+    },
+    {
+      "id": "n2",
+      "name": "Secret is correct?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "CHANGE_ME_SECRET",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "id": "n3",
+      "name": "Reject: wrong secret",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'wrong secret' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "position": [
+        480,
+        340
+      ]
+    },
+    {
+      "id": "n4",
+      "name": "Normalize data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "// Turn the bot's payload into one flat record that any CRM node can use.\nconst b = $input.first().json.body || {};\nreturn [{ json: {\n  event: b.event,\n  session_id: b.session_id || null,\n  name: b.name || null,\n  email: b.email || null,\n  phone: b.phone || null,\n  contact: b.email || b.phone || b.contact || null,\n  service: b.service || null,\n  note: b.note || null,\n  day: b.day || null,\n  slot: b.slot || null,\n  received_at: new Date().toISOString()\n} }];"
+      },
+      "position": [
+        480,
+        100
+      ]
+    },
+    {
+      "id": "n5",
+      "name": "Is it a lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "lead",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "position": [
+        720,
+        100
+      ]
+    },
+    {
+      "id": "n6",
+      "name": "Create contact in CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:9100/contacts",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "position": [
+        960,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "n7",
+      "name": "Create appointment in CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:9100/appointments",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "position": [
+        960,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "n8",
+      "name": "Reply OK to the bot",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "position": [
+        1200,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Chatbot webhook": {
+      "main": [
+        [
+          {
+            "node": "Secret is correct?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Secret is correct?": {
+      "main": [
+        [
+          {
+            "node": "Normalize data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject: wrong secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize data": {
+      "main": [
+        [
+          {
+            "node": "Is it a lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a lead?": {
+      "main": [
+        [
+          {
+            "node": "Create contact in CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create appointment in CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create contact in CRM": {
+      "main": [
+        [
+          {
+            "node": "Reply OK to the bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create appointment in CRM": {
+      "main": [
+        [
+          {
+            "node": "Reply OK to the bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

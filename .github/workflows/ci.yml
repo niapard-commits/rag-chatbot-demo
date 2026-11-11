@@ -1,0 +1,33 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  # Runs the REAL embedding model (BAAI/bge-small-en-v1.5) against a real Qdrant server and prints how
+  # plain BM25 compares with hybrid search. Look at the job summary to choose DENSE_MIN_SCORE.
+  hybrid-search-eval:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports: ["6333:6333"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements.txt fastembed
+      - name: Evaluate BM25 vs hybrid with a real embedding model
+        env:
+          EMBEDDER: fastembed
+          QDRANT_URL: http://localhost:6333
+        run: |
+          python scripts/eval_retrieval.py | tee eval.txt
+          { echo '### Retrieval evaluation (fastembed bge-small-en-v1.5)'; echo '```'; cat eval.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
