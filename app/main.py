@@ -2,11 +2,12 @@
 import hmac
 import logging
 from contextlib import asynccontextmanager
+from datetime import date
 import os
 import time
 from collections import defaultdict, deque
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -49,6 +50,8 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["POST", "GET"], allow_headers=["*"])
 
     hits: dict[str, deque] = defaultdict(deque)
+    ip_hits: dict[str, deque] = defaultdict(deque)
+    daily = {"day": date.today(), "count": 0}
 
     def check_rate(session_id: str) -> None:
         now, q = time.monotonic(), hits[session_id]
@@ -57,6 +60,30 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         if len(q) >= RATE_LIMIT:
             raise HTTPException(429, "Too many messages. Please wait a moment.")
         q.append(now)
+
+    def client_ip(request: Request) -> str:
+        if settings.trust_proxy:  # only safe when the app is reachable through the proxy alone
+            forwarded = request.headers.get("x-forwarded-for", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
+    def check_public_limits(request: Request) -> None:
+        """Per-IP rate limit and a daily cap for the whole chat: a visitor who invents new session ids
+        must not be able to run up the bill of the model's API."""
+        if settings.rate_limit_ip:
+            now, q = time.monotonic(), ip_hits[client_ip(request)]
+            while q and now - q[0] > RATE_WINDOW:
+                q.popleft()
+            if len(q) >= settings.rate_limit_ip:
+                raise HTTPException(429, "Too many messages from your network. Please wait a moment.")
+            q.append(now)
+        if settings.daily_message_cap:
+            if daily["day"] != date.today():
+                daily["day"], daily["count"] = date.today(), 0
+            if daily["count"] >= settings.daily_message_cap:
+                raise HTTPException(429, "The demo has reached its daily message limit. Please come back tomorrow.")
+            daily["count"] += 1
 
     def admin(x_admin_token: str = Header(default="")) -> None:
         if not settings.admin_token:
@@ -71,8 +98,9 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 "llm_chain": [p.name for p in agent.llm.providers]}
 
     @app.post("/chat")
-    def chat(body: ChatIn):
+    def chat(body: ChatIn, request: Request):
         check_rate(body.session_id)
+        check_public_limits(request)
         return agent.handle(body.session_id, body.message)
 
     @app.post("/admin/reindex", dependencies=[Depends(admin)])

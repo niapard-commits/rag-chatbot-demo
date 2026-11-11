@@ -2,18 +2,21 @@
 services:
   chatbot:
     build: .
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]      # reachable only from the server itself: a reverse proxy (Caddy) adds HTTPS
     env_file: .env
     environment:
-      QDRANT_URL: ${QDRANT_URL:-}
+      TRUST_PROXY: "1"                  # real visitor IP from the proxy's X-Forwarded-For header (for the per-IP limit)
     volumes:
       - ./data:/srv/chatbot/data        # SQLite: leads and appointments
       - ./knowledge:/srv/chatbot/knowledge   # edit the documents without rebuilding, then POST /admin/reindex
+    mem_limit: 512m
     restart: unless-stopped
-    depends_on: [qdrant]
 
-  # Optional: only used when RETRIEVER=qdrant and QDRANT_URL=http://qdrant:6333 are set in .env
+  # Optional vector database. Start it with:  docker compose --profile qdrant up -d
+  # and set RETRIEVER=qdrant and QDRANT_URL=http://qdrant:6333 in .env
   qdrant:
     image: qdrant/qdrant:v1.12.4
+    profiles: ["qdrant"]
     volumes: ["./qdrant_data:/qdrant/storage"]
+    mem_limit: 1g
     restart: unless-stopped

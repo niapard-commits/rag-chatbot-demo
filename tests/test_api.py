@@ -48,3 +48,35 @@ def test_admin_endpoints_need_the_token(client):
 def test_admin_disabled_without_token(settings):
     settings.admin_token = ""
     assert TestClient(create_app(settings)).get("/admin/leads").status_code == 404
+
+
+def test_new_session_ids_do_not_bypass_the_ip_limit(settings):
+    settings.rate_limit_ip, settings.daily_message_cap = 5, 0
+    client = TestClient(create_app(settings))
+    codes = [chat(client, "opening hours", sid=f"s{i}").status_code for i in range(8)]
+    assert codes[:5] == [200] * 5 and codes[5:] == [429] * 3
+
+
+def test_other_ip_addresses_have_their_own_limit(settings):
+    settings.rate_limit_ip, settings.daily_message_cap, settings.trust_proxy = 2, 0, True
+    client = TestClient(create_app(settings))
+    send = lambda ip, n: client.post("/chat", json={"session_id": f"s{n}", "message": "hours"},
+                                     headers={"X-Forwarded-For": ip}).status_code
+    assert [send("1.1.1.1", 1), send("1.1.1.1", 2), send("1.1.1.1", 3)] == [200, 200, 429]
+    assert send("2.2.2.2", 4) == 200
+
+
+def test_forwarded_header_is_ignored_unless_the_proxy_is_trusted(settings):
+    settings.rate_limit_ip, settings.daily_message_cap, settings.trust_proxy = 2, 0, False
+    client = TestClient(create_app(settings))
+    codes = [client.post("/chat", json={"session_id": f"s{n}", "message": "hours"},
+                         headers={"X-Forwarded-For": f"9.9.9.{n}"}).status_code for n in range(3)]
+    assert codes == [200, 200, 429]      # a visitor cannot dodge the limit by faking the header
+
+
+def test_daily_cap_stops_the_chat_for_everyone(settings):
+    settings.rate_limit_ip, settings.daily_message_cap = 0, 3
+    client = TestClient(create_app(settings))
+    codes = [chat(client, "hours", sid=f"s{i}").status_code for i in range(5)]
+    assert codes == [200, 200, 200, 429, 429]
+    assert client.get("/health").status_code == 200      # only the chat is stopped

@@ -124,17 +124,29 @@ correct match 0.64). The one miss is an idiom ("what will it set me back" meanin
 The OpenAI embedder is written against the official SDK but was not run. Re-run `scripts/eval_retrieval.py` after changing
 the model or the documents.
 
-## Deploy on your own server (Docker)
+## Deploy on your own server (Docker + Caddy)
 
 ```bash
 git clone https://github.com/niapard-commits/rag-chatbot-demo && cd rag-chatbot-demo
 cp .env.example .env        # then edit .env: ANTHROPIC_API_KEY=..., ADMIN_TOKEN=a-long-random-string
 docker compose up -d --build
-curl localhost:8000/health   # the chat page is at http://SERVER:8000/
+curl localhost:8000/health
 ```
 
-Leads and bookings are kept in `./data` (survives updates). For HTTPS put a reverse proxy such as Caddy or nginx in front of port 8000.
-`Dockerfile` and `docker-compose.yml` were written but **not built in the development sandbox** (no Docker daemon there); the app itself was run with uvicorn. If the build fails on your server, send the error.
+The container listens on `127.0.0.1:8000` only. For a public HTTPS address add a block to your Caddyfile
+(Caddy gets the certificate by itself) and point a DNS record of `chat.example.com` to the server:
+
+```
+chat.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+A public chat costs money with every message, so it has three protections (all in `.env`): `RATE_LIMIT_IP` (messages
+per minute for one IP address, default 40), `DAILY_MESSAGE_CAP` (all messages per day, default 1000, then the chat says
+to come back tomorrow) and the per-session limit. Also set a monthly spending limit for the API key in the provider's console.
+Leads and bookings are kept in `./data` (survives updates). Optional Qdrant: `docker compose --profile qdrant up -d`.
+`Dockerfile` and `docker-compose.yml` were written but **not built in the development sandbox** (no Docker daemon there); the app itself was run with uvicorn.
 
 ## Deploy (Render)
 

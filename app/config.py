@@ -54,6 +54,11 @@ class Settings:
     qdrant_url: str = os.getenv("QDRANT_URL", "")
     qdrant_api_key: str = os.getenv("QDRANT_API_KEY", "")
     qdrant_path: str = os.getenv("QDRANT_PATH", "")
+    # Protection of a public chat: messages per minute for one IP address, and a cap on all messages per day
+    # (every message costs money on the model's API). 0 turns a limit off.
+    rate_limit_ip: int = int(os.getenv("RATE_LIMIT_IP", "40"))
+    daily_message_cap: int = int(os.getenv("DAILY_MESSAGE_CAP", "1000"))
+    trust_proxy: bool = os.getenv("TRUST_PROXY", "0") == "1"   # read the client IP from X-Forwarded-For (behind Caddy/nginx)
     qdrant_collection: str = os.getenv("QDRANT_COLLECTION", "knowledge")
     # Meaning-based search on top of BM25 (only with RETRIEVER=qdrant): "" (off), "fastembed" (local) or "openai".
     embedder: str = os.getenv("EMBEDDER", "").lower()
