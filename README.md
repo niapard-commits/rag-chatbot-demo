@@ -37,7 +37,9 @@ visitor ──> POST /chat ──> ChatAgent
 
 One design decision matters: **the model only talks and extracts data. Saving a lead or booking a slot is
 done by normal code after validation.** The model cannot confirm a booking that does not exist, and a
-wrong date or email is dropped and asked again.
+wrong date or email is dropped and asked again. The day and time are checked (weekend, off the 30-minute grid, past,
+too far ahead, already taken) **before** the visitor is asked to confirm, a short "yes" / "так" / "ano" is read by code in
+any language, and moving or cancelling an appointment is always handed to the team, never turned into a new booking.
 
 ## Run it
 
@@ -185,7 +187,7 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 153 tests, no network, no API keys
+python -m pytest -q       # 198 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,

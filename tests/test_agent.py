@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.agent import FALLBACK_REPLY, ChatAgent, clean_fields, parse_model_output
+from app.agent import FALLBACK_REPLY, ChatAgent, clean_fields, parse_model_output, short_answer
 from app.llm import FallbackLLM
 from app.rag.retriever import BM25Retriever
 from tests.conftest import NOW, TUESDAY
@@ -40,11 +40,12 @@ def test_full_booking_flow_saves_lead_and_appointment(agent, crm, calendar):
 def test_taken_slot_asks_for_another_time(agent):
     say(agent, "s1", f"Book a cleaning, I'm Anna Novak, anna@example.com, {TUESDAY} 10:00")
     say(agent, "s1", "yes")
-    say(agent, "s2", f"Book a cleaning, I'm Tom Lee, tom@example.com, {TUESDAY} 10:00")
-    r = say(agent, "s2", "yes")
-    assert r["booking"] is None and "already taken" in r["reply"]
+    # The second visitor is told BEFORE being asked to confirm (no "Please check" for an impossible slot).
+    r = say(agent, "s2", f"Book a cleaning, I'm Tom Lee, tom@example.com, {TUESDAY} 10:00")
+    assert r["booking"] is None and "already taken" in r["reply"] and "Please check" not in r["reply"]
     assert "date" not in r["state"] and "time" not in r["state"]     # asks again for date and time
-    say(agent, "s2", f"{TUESDAY} 11:00")
+    r = say(agent, "s2", f"{TUESDAY} 11:00")
+    assert "Please check" in r["reply"]
     r = say(agent, "s2", "yes")
     assert r["booking"]["time"] == "11:00"
 
@@ -238,3 +239,116 @@ def test_early_facts_stay_in_context_after_several_questions(settings, calendar,
               "How can I cancel my appointment?"]:
         a.handle("s1", q, now=NOW)
     assert "Monday to Friday" in llm.calls[3][0]            # the first answer's source is still there
+
+
+# ------------------------------------------------------------ bugs found in live tests (12 Nov 2026)
+LEAK = ('<invoke name="reply_to_visitor">\n<parameter name="reply">I do not have that information. '
+        'What time on Monday suits you, between 09:00 and 17:00?</parameter>\n'
+        '<parameter name="intent">book</parameter>\n<parameter name="fields">')
+
+
+def test_tool_call_markup_never_reaches_the_visitor():
+    p = parse_model_output(LEAK)
+    assert p["reply"] == "I do not have that information. What time on Monday suits you, between 09:00 and 17:00?"
+    assert p["intent"] == "book" and p["fields"] == {} and p["repaired"] is True
+    assert "<" not in p["reply"]
+
+
+def test_markup_with_valid_fields_keeps_the_fields():
+    raw = ('<invoke name="reply_to_visitor"><parameter name="reply">Hi Anna</parameter>'
+           '<parameter name="intent">lead</parameter><parameter name="fields">{"name": "Anna"}</parameter></invoke>')
+    p = parse_model_output(raw)
+    assert p["reply"] == "Hi Anna" and p["intent"] == "lead" and p["fields"] == {"name": "Anna"}
+
+
+def test_markup_inside_a_json_reply_is_removed():
+    raw = json.dumps({"reply": "Sure.<parameter name=\"x\">", "intent": "question", "fields": {}})
+    assert parse_model_output(raw)["reply"] == "Sure."
+
+
+def test_cut_off_json_still_gives_the_readable_reply():
+    p = parse_model_output('{"reply": "We are open Monday to Friday, 09:00 to 17:00. Anything el')
+    assert p["reply"].startswith("We are open Monday to Friday") and p["repaired"] is True
+
+
+def test_unreadable_output_gives_the_polite_fallback():
+    assert parse_model_output('{"intent": "book", "fie')["reply"] == FALLBACK_REPLY
+
+
+def test_lost_booking_fields_are_asked_for_again_once(settings, calendar, crm):
+    good = json.dumps({"reply": "Thank you.", "intent": "book", "fields": {
+        "name": "Eve", "email": "eve@example.com", "service": "Check-up", "date": TUESDAY, "time": "10:00"}})
+    llm = ScriptedLLM(LEAK, good)
+    a = ChatAgent(settings, BM25Retriever(settings.knowledge_dir), FallbackLLM([llm]), crm, calendar)
+    r = a.handle("s1", "book a check-up", now=NOW)
+    assert len(llm.calls) == 2 and "Please check" in r["reply"] and "<" not in r["reply"]
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("yes", True), ("Yes!", True), ("yes please", True), ("ok", True), ("book it", True),
+    ("так", True), ("Так, підтверджую", True), ("ага", True), ("да", True), ("ano", True), ("tak", True),
+    ("no", False), ("ні", False), ("нет", False), ("nie", False), ("no thanks", False),
+    ("yes 15:00", None), ("ні, давайте інший час", None), ("what does it cost?", None), ("", None),
+    ("yes but can you do it on a different day please", None),
+])
+def test_short_answers_are_read_in_any_language(text, expected):
+    assert short_answer(text) is expected
+
+
+def test_ukrainian_yes_confirms_an_english_summary(agent, calendar):
+    r = say(agent, "s1", f"Book a cleaning, I'm Anna Novak, anna@example.com, {TUESDAY} 10:00")
+    assert "Please check" in r["reply"]
+    r = say(agent, "s1", "так")
+    assert r["booking"]["time"] == "10:00" and calendar.taken(TUESDAY) == {"10:00"}
+
+
+def test_a_question_while_waiting_gets_an_answer_and_one_reminder(settings, calendar, crm):
+    book = json.dumps({"reply": "Thank you.", "intent": "book", "fields": {
+        "name": "Anna Novak", "email": "anna@example.com", "service": "Cleaning", "date": TUESDAY, "time": "10:00"}})
+    side = json.dumps({"reply": "We are open Monday to Friday, 09:00 to 17:00.", "intent": "question", "fields": {}})
+    ok = json.dumps({"reply": "Great.", "intent": "book", "fields": {}})
+    a = ChatAgent(settings, BM25Retriever(settings.knowledge_dir), FallbackLLM([ScriptedLLM(book, side, ok)]),
+                  crm, calendar)
+    assert "Please check" in a.handle("s1", "book a cleaning", now=NOW)["reply"]
+    r = a.handle("s1", "What are your opening hours?", now=NOW)
+    assert r["reply"].startswith("We are open Monday to Friday")          # the question is answered
+    assert r["reply"].count("Shall I book it?") == 1 and "not confirmed yet" in r["reply"]
+    assert r["booking"] is None and calendar.taken(TUESDAY) == set()
+    r = a.handle("s1", "yes", now=NOW)                                     # the booking is still waiting
+    assert r["booking"]["time"] == "10:00"
+
+
+@pytest.mark.parametrize("when,message", [
+    ("2030-01-08 12:34", "every 30 minutes"),
+    ("2030-01-12 10:00", "weekend"),
+    ("2030-12-31 10:00", "180 days"),
+    ("2030-01-04 10:00", "past"),
+])
+def test_impossible_times_are_refused_before_asking_to_confirm(agent, calendar, when, message):
+    r = say(agent, "s1", f"Book a cleaning, I'm Anna Novak, anna@example.com, {when}")
+    assert message in r["reply"] and "Please check" not in r["reply"] and "Shall I book" not in r["reply"]
+    assert "date" not in r["state"] and "time" not in r["state"] and "awaiting_confirmation" not in r["state"]
+    assert calendar.taken("2030-01-08") == set() and calendar.taken("2030-01-04") == set()
+
+
+def test_moving_an_appointment_never_starts_a_new_booking(agent, calendar, crm):
+    r = say(agent, "s1", "Please reschedule my appointment")
+    assert "our team" in r["reply"] and r["booking"] is None and "booking_started" not in r["state"]
+    r = say(agent, "s1", f"I'm Anna Novak, anna@example.com, maybe {TUESDAY} 10:00")
+    assert calendar.taken(TUESDAY) == set()
+    assert crm.list_leads()[0]["note"].startswith("Visitor asks: Please reschedule")
+
+
+def test_change_intent_from_the_model_ignores_booking_details(settings, calendar, crm):
+    answer = json.dumps({"reply": "Our team does that. Shall I pass it on?", "intent": "change", "fields": {
+        "name": "Eve", "email": "eve@example.com", "service": "Filling", "date": TUESDAY, "time": "10:00",
+        "note": "wants to move the filling to Thursday"}})
+    a = ChatAgent(settings, BM25Retriever(settings.knowledge_dir), FallbackLLM([ScriptedLLM(answer)]), crm, calendar)
+    r = a.handle("s1", "can you move my filling to Thursday?", now=NOW)
+    assert r["booking"] is None and "Please check" not in r["reply"] and calendar.taken(TUESDAY) == set()
+    assert crm.list_leads()[0]["note"] == "wants to move the filling to Thursday"
+
+
+def test_page_stops_browser_auto_translation():
+    html = open("static/index.html", encoding="utf-8").read()
+    assert 'translate="no"' in html and 'name="google" content="notranslate"' in html

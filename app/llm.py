@@ -32,7 +32,7 @@ REPLY_TOOL = {
         "type": "object",
         "properties": {
             "reply": {"type": "string"},
-            "intent": {"type": "string", "enum": ["question", "lead", "book"]},
+            "intent": {"type": "string", "enum": ["question", "lead", "book", "change"]},
             "fields": {
                 "type": "object",
                 "properties": {
@@ -153,6 +153,14 @@ class MockLLM:
                 fields["confirm"] = False
 
         merged = {**state, **{k: v for k, v in fields.items() if v}}
+        # Moving or cancelling is done by the team: the assistant never starts a new booking for it.
+        if not state.get("awaiting_confirmation") and re.search(
+                r"\b(reschedule|postpone|(?:cancel|move|change)\s+(?:my|the)\s+(?:\w+\s+)?(?:appointment|booking|visit))\b", low):
+            fields["note"] = f"Visitor asks: {text.strip()}"[:250]
+            reply = ("I cannot move or cancel appointments myself, our team does that. "
+                     + ("I have passed your request to them." if (merged.get("name") and (merged.get("email") or merged.get("phone")))
+                        else "I can pass your request to them: please leave your name and an email or phone number."))
+            return json.dumps({"reply": reply, "intent": "change", "fields": fields})
         wants_booking = bool(re.search(r"\b(book|appointment|schedule|reserve|visit)\b", low)) or bool(
             state.get("booking_started"))
         if state.get("awaiting_confirmation") or fields["confirm"] is not None:

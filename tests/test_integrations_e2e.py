@@ -57,9 +57,8 @@ def test_booking_reaches_hubspot_and_google_calendar(full_agent, servers):
 def test_hand_made_event_is_respected_in_the_conversation(full_agent, servers):
     hs, g = servers
     g.busy = [(f"{TUESDAY}T09:00:00Z", f"{TUESDAY}T09:30:00Z")]       # 10:00 local is busy
-    say(full_agent, "Book a cleaning, I'm Anna Novak, anna@example.com, " + TUESDAY + " 10:00")
-    reply = say(full_agent, "yes")
-    assert reply["booking"] is None and "already taken" in reply["reply"]
+    reply = say(full_agent, "Book a cleaning, I'm Anna Novak, anna@example.com, " + TUESDAY + " 10:00")
+    assert reply["booking"] is None and "already taken" in reply["reply"]     # said before asking to confirm
     assert "10:00" not in reply["reply"].split("Free times")[-1]       # 10:00 is not offered as free
     assert g.events == {}
 

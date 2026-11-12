@@ -30,9 +30,64 @@ FALLBACK_REPLY = ("Sorry, I am having technical trouble right now. Please try ag
                   "or leave your name and phone number and our team will call you back.")
 
 
+INTENTS = ("question", "lead", "book", "change")
+# Tool-call markup that a model sometimes writes into its text answer instead of making a real tool call
+# (seen in a live test: the visitor saw <invoke name="reply_to_visitor"><parameter name="reply">...).
+_TAG_RE = re.compile(r"</?\s*(?:antml:)?(?:function_calls|invoke|parameter|tool_use|tool_call)\b[^>]*>?", re.I)
+_PARAM_RE = re.compile(
+    r'<\s*(?:antml:)?parameter\s+name="(\w+)"\s*>(.*?)'
+    r'(?:<\s*/\s*(?:antml:)?parameter\s*>|(?=<\s*(?:antml:)?parameter\s+name=)|\Z)', re.S | re.I)
+
+
+def strip_markup(text: str) -> str:
+    return _TAG_RE.sub("", text).strip()
+
+
+def _intent(value) -> str:
+    return value.strip().lower() if isinstance(value, str) and value.strip().lower() in INTENTS else "question"
+
+
+def _from_markup(text: str) -> dict | None:
+    """Recover the answer from tool-call markup written as text. Fields are kept only if they are valid JSON."""
+    params = {m.group(1).lower(): m.group(2).strip() for m in _PARAM_RE.finditer(text)}
+    reply = strip_markup(params.get("reply", ""))
+    if not reply:
+        return None
+    fields = {}
+    if params.get("fields"):
+        try:
+            data = json.loads(params["fields"])
+            fields = data if isinstance(data, dict) else {}
+        except json.JSONDecodeError:
+            pass
+    return {"reply": reply, "intent": _intent(params.get("intent")), "fields": fields, "repaired": True}
+
+
+def _salvage_reply(text: str) -> dict | None:
+    """The JSON was cut off or is broken, but the reply text is readable: show that, extract nothing else."""
+    m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)', text)
+    if not m:
+        return None
+    raw = m.group(1).rstrip("\\")
+    try:
+        reply = json.loads(f'"{raw}"')
+    except json.JSONDecodeError:
+        reply = raw
+    reply = strip_markup(reply)
+    if not reply:
+        return None
+    intent = re.search(r'"intent"\s*:\s*"(\w+)"', text)
+    return {"reply": reply, "intent": _intent(intent.group(1) if intent else None), "fields": {}, "repaired": True}
+
+
 def parse_model_output(raw: str) -> dict:
-    """Return {"reply", "intent", "fields"} even if the model wrapped the JSON in text or code fences."""
+    """Return {"reply", "intent", "fields"} even if the model wrapped the JSON in text or code fences,
+    wrote tool-call markup as text, or its JSON was cut off. "repaired" is added when the answer had to be rescued."""
     text = raw.strip()
+    if re.search(r"<\s*(?:antml:)?parameter\s+name=", text, re.I):
+        recovered = _from_markup(text)
+        if recovered:
+            return recovered
     decoder = json.JSONDecoder()
     pos = text.find("{")
     while pos != -1:  # take the first valid JSON object that has a reply, even if there is text around it
@@ -41,14 +96,42 @@ def parse_model_output(raw: str) -> dict:
         except json.JSONDecodeError:
             pos = text.find("{", pos + 1)
             continue
-        if isinstance(data, dict) and isinstance(data.get("reply"), str) and data["reply"].strip():
+        if isinstance(data, dict) and isinstance(data.get("reply"), str) and strip_markup(data["reply"]):
             fields = data.get("fields") if isinstance(data.get("fields"), dict) else {}
-            intent = data.get("intent") if data.get("intent") in ("question", "lead", "book") else "question"
-            return {"reply": data["reply"].strip(), "intent": intent, "fields": fields}
+            return {"reply": strip_markup(data["reply"]), "intent": _intent(data.get("intent")), "fields": fields}
         pos = text.find("{", pos + 1)
     # The model ignored the format: use the text before any JSON as the reply and extract nothing.
-    plain = re.sub(r"```(?:json)?", "", text.split("{", 1)[0]).strip()
+    plain = strip_markup(re.sub(r"```(?:json)?", "", text.split("{", 1)[0]))
+    if not plain and (salvaged := _salvage_reply(text)):
+        return salvaged
     return {"reply": plain or FALLBACK_REPLY, "intent": "question", "fields": {}}
+
+
+# A short answer to "Shall I book it? (yes / no)" in the languages our visitors write. The model also reports
+# "confirm", but it missed a plain Ukrainian "так" in an English conversation, so short answers are read by code.
+_YES = {"yes", "y", "yeah", "yea", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "correct", "right",
+        "да", "так", "ага", "угу", "авжеж", "звісно", "звичайно", "добре", "гаразд", "окей", "ок", "підтверджую",
+        "підтверджуємо", "підтвердити", "підтвердьте", "підходить", "давайте", "давай", "бронюйте", "бронюй",
+        "забронюйте", "записуйте", "ano", "áno", "jo", "jasne", "tak", "si", "sí", "oui", "ja", "claro", "aha"}
+_NO = {"no", "n", "nope", "nah", "cancel", "wrong", "incorrect", "ні", "нет", "не", "нє", "ніт", "nie", "ne", "nein",
+       "non", "stop"}
+_FILLER = {"please", "thanks", "thank", "you", "so", "then", "well", "будь", "ласка", "прошу", "дякую", "ну", "prosim",
+           "prosím", "ďakujem", "dakujem"}
+_YES_PHRASES = {"book it", "go ahead", "do it", "please do", "sounds good", "looks good", "that is right",
+                "that is correct", "thats right", "thats correct"}
+
+
+def short_answer(message: str) -> bool | None:
+    """True / False for a short clear yes / no, None for anything else (a question, new details, a longer text)."""
+    words = re.findall(r"[^\W_]+", message.lower().replace("'", "").replace("\u2019", ""))
+    if not words or len(words) > 5:
+        return None
+    if " ".join(words) in _YES_PHRASES:
+        return True
+    if any(w not in _YES | _NO | _FILLER for w in words):
+        return None
+    yes, no = any(w in _YES for w in words), any(w in _NO for w in words)
+    return True if yes and not no else False if no and not yes else None
 
 
 def clean_text(value: str, limit: int) -> str:
@@ -147,12 +230,21 @@ class ChatAgent:
 
         try:
             parsed = parse_model_output(self.llm.complete(system, messages))
+            if parsed.get("repaired"):
+                log.warning("The model did not answer in the expected format; the reply was recovered from its text")
+                if parsed["intent"] == "book" and not parsed["fields"]:
+                    # Booking details were lost with the broken format: ask once more instead of losing them.
+                    again = parse_model_output(self.llm.complete(system, messages))
+                    if not again.get("repaired") or again["fields"]:
+                        parsed = again
         except LLMError as exc:
             log.error("All LLM providers failed: %s", exc)
             return {"reply": FALLBACK_REPLY, "state": self._public_state(state), "sources": [],
                     "provider": None, "booking": None}
 
         confirm = parsed["fields"].get("confirm") if isinstance(parsed["fields"], dict) else None
+        if state.get("_pending") and (direct := short_answer(message)) is not None:
+            confirm = direct                      # a plain "так" / "yes" / "no" is read by code, in any language
         state.update(clean_fields(parsed["fields"], self.settings.services))
         if state.get("_booked_reason"):  # once a visitor has booked, the model cannot lower the score again
             state["score"], state["score_reason"] = "hot", state["_booked_reason"]
@@ -161,9 +253,12 @@ class ChatAgent:
 
         reply, booking = parsed["reply"], None
         self._maybe_save_lead(session_id, state)
-        booking_reply = self._maybe_book(session_id, state, now, confirm)
+        # "change" = the visitor wants to move or cancel an appointment. The assistant cannot do that: the team does.
+        booking_reply = None if parsed["intent"] == "change" else self._maybe_book(session_id, state, now, confirm)
         if booking_reply:
-            reply, booking = self._localize(booking_reply[0], state.get("language")), booking_reply[1]
+            text, booking, replaces_reply = booking_reply
+            text = self._localize(text, state.get("language"))
+            reply = text if replaces_reply else f"{reply}\n\n{text}"
 
         sess["history"] += [{"role": "user", "content": message}, {"role": "assistant", "content": reply}]
         sess["history"] = sess["history"][-2 * MAX_HISTORY:]
@@ -211,6 +306,7 @@ class ChatAgent:
         state["_lead_sig"] = signature
 
     def _maybe_book(self, session_id: str, state: dict, now: datetime | None, confirm=None):
+        """Returns None or (text, booking_info, replaces_the_model_reply)."""
         if not state.get("booking_started"):
             return None
         contact = state.get("email") or state.get("phone")
@@ -219,20 +315,28 @@ class ChatAgent:
         # Never book straight away: the model may have misread a relative date ("next Thursday").
         # The code shows its own summary and books only after an explicit yes about exactly these details.
         signature = (state["service"], state["date"], state["time"], state["name"], contact)
-        if state.get("_pending") == signature and confirm is False:
-            state.pop("_pending", None)
-            state.pop("awaiting_confirmation", None)
-            state.pop("date", None)
-            state.pop("time", None)
-            return "No problem, I have not booked anything. Which day and time would suit you instead?", None
-        if state.get("_pending") != signature or confirm is not True:
+        pending = state.get("_pending") == signature
+        if pending and confirm is False:
+            self._forget_pending(state, with_slot=True)
+            return "No problem, I have not booked anything. Which day and time would suit you instead?", None, True
+        if not pending:
+            # Check the day and time BEFORE asking for a confirmation (weekend, 12:34, past, too far ahead, taken).
+            try:
+                self.calendar.check(state["date"], state["time"], now)
+            except BookingError as exc:
+                self._forget_pending(state, with_slot=True)
+                return str(exc) + " Which other day and time would you prefer?", None, True
             state["_pending"] = signature
             weekday = date.fromisoformat(state["date"]).strftime("%A")
             summary = f"{state['service']} on {weekday} {state['date']} at {state['time']} for {state['name']} ({contact})"
             state["awaiting_confirmation"] = summary
-            return f"Please check: {summary}. Shall I book it? (yes / no)", None
-        state.pop("_pending", None)
-        state.pop("awaiting_confirmation", None)
+            return f"Please check: {summary}. Shall I book it? (yes / no)", None, True
+        if confirm is not True:
+            # Same details, no clear answer (the visitor asked something else): the model's answer stays, the
+            # code only reminds that the booking is still waiting. The confirmation question is not repeated.
+            return f"Your booking is not confirmed yet: {state['awaiting_confirmation']}. Shall I book it? (yes / no)", \
+                None, False
+        self._forget_pending(state)
         try:
             b = self.calendar.book(session_id=session_id, name=state["name"], contact=contact,
                                    service=state["service"], day=state["date"], slot=state["time"], now=now)
@@ -240,7 +344,7 @@ class ChatAgent:
             # Forget the rejected date/time so the visitor can choose another one.
             state.pop("date", None)
             state.pop("time", None)
-            return str(exc) + " Which other day and time would you prefer?", None
+            return str(exc) + " Which other day and time would you prefer?", None, True
         self.crm.notify_booking(session_id, state["name"], contact, b.service, b.day, b.slot)
         # A confirmed booking is the strongest buying signal there is: the code sets the score, not the model.
         state["_booked_reason"] = f"Booked {b.service} on {b.day} at {b.slot}."
@@ -250,7 +354,15 @@ class ChatAgent:
             state.pop(key, None)
         info = {"id": b.id, "service": b.service, "day": b.day, "time": b.slot}
         return (f"Your appointment is booked: {b.service} on {b.day} at {b.slot}. "
-                f"We will contact you at {contact} if anything changes. Anything else I can help with?"), info
+                f"We will contact you at {contact} if anything changes. Anything else I can help with?"), info, True
+
+    @staticmethod
+    def _forget_pending(state: dict, with_slot: bool = False) -> None:
+        state.pop("_pending", None)
+        state.pop("awaiting_confirmation", None)
+        if with_slot:
+            state.pop("date", None)
+            state.pop("time", None)
 
     @staticmethod
     def _public_state(state: dict) -> dict:

@@ -44,3 +44,30 @@ def test_bad_date_and_time_give_friendly_errors(calendar):
         book(calendar, day="tomorrow")
     with pytest.raises(BookingError, match="time"):
         book(calendar, slot="noon")
+
+
+# ------------------------------------------------------------ check(): the rules, without booking anything
+def test_check_accepts_a_free_slot_and_books_nothing(calendar):
+    assert calendar.check(TUESDAY, "9:30", NOW) == "09:30"
+    assert calendar.taken(TUESDAY) == set()
+
+
+@pytest.mark.parametrize("day,slot,message", [
+    (SATURDAY, "10:00", "weekend"),
+    (TUESDAY, "12:34", "every 30 minutes"),
+    (TUESDAY, "08:00", "between 09:00 and 17:00"),
+    (TUESDAY, "17:00", "between 09:00 and 17:00"),
+    ("2030-01-04", "10:00", "past"),
+    ("2031-06-03", "10:00", "180 days"),
+    (TUESDAY, "ten", "did not understand the time"),
+    ("tomorrow", "10:00", "did not understand the date"),
+])
+def test_check_explains_every_impossible_slot(calendar, day, slot, message):
+    with pytest.raises(BookingError, match=message):
+        calendar.check(day, slot, NOW)
+
+
+def test_check_reports_a_taken_slot_with_alternatives(calendar):
+    book(calendar)
+    with pytest.raises(BookingError, match="already taken"):
+        calendar.check(TUESDAY, "10:00", NOW)

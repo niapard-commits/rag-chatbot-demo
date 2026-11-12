@@ -251,3 +251,26 @@ The unit tests (mock model) were green, but real conversations showed problems t
 The bot also asked one natural timing question ("Are you planning this soon, or just looking ahead?") and no more
 than one per message. Limits: three conversations are a smoke test, not a measurement of scoring accuracy. Review the
 reasons in your own CRM for a week and adjust the rules in `app/prompts.py`.
+
+
+## Manual test by the owner (12 Nov 2026): what it found and what was changed
+
+About 80 free-form messages in Ukrainian, Russian-like typos, Slovak and English on the deployed demo
+(screen recordings reviewed frame by frame). Findings and the fix for each:
+
+| Found | Fix |
+| --- | --- |
+| The model once wrote its tool call as text and the visitor saw `<invoke name="reply_to_visitor"><parameter ...>` | `parse_model_output` recovers the reply from such markup, strips any tags, and asks the model again once if booking fields were lost |
+| A cut-off JSON answer showed "technical trouble" although the reply text was readable | The reply text is rescued from the broken JSON |
+| The bot asked "Shall I book it?" for 12:34 and only after "yes" said slots are every 30 minutes (same for far dates, weekends, the past) | `Calendar.check()` runs before the confirmation question |
+| "так" in an English conversation was not read as yes; the confirmation question was repeated or the second "так" counted as "no" | Short yes / no answers are read by code in English, Ukrainian, Russian, Slovak, Czech, Polish, German |
+| A side question during the confirmation was swallowed by a repeated confirmation question | The question is answered, one short reminder is added |
+| "Move my appointment" started a second booking | New intent `change`: handed to the team with a note, never a new booking |
+| Booking for a husband was stored under the visitor's name | The prompt asks for the name of the person who comes |
+| Chrome's automatic page translation changed the visitor's own words and mistranslated service names ("Filling" became "Завантаження") | `translate="no"` and `notranslate` on the page (this was the browser, not the bot) |
+| Greetings "for the president" were accepted as a message for the team | The prompt says to pass only real questions to the team |
+
+Also checked and fine: prompt-injection attempts, "write a poem", diagnosis and medication requests, other patients' data,
+invalid dates and e-mails, HTML / SQL / template text (shown as plain text, page title unchanged), 6 000 and 5 000
+character messages, and the rate limit (28 requests passed, the next 12 got HTTP 429).
+The fixes above are covered by unit tests (scripted and offline model); they have not yet been re-run against the live model.

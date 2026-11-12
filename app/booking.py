@@ -107,8 +107,10 @@ class Calendar:
             free.append(s)
         return free
 
-    def book(self, *, session_id: str, name: str, contact: str, service: str, day: str, slot: str,
-             now: datetime | None = None) -> Booking:
+    def check(self, day: str, slot: str, now: datetime | None = None, fresh: bool = False) -> str:
+        """Raise BookingError (with a message that is safe to show) if this day and time cannot be booked.
+        Returns the normalised slot. The agent calls this BEFORE it asks the visitor to confirm, so the visitor is
+        never asked to confirm something that is impossible (weekend, 12:34, the past, too far ahead, taken)."""
         d = self._parse_day(day)
         slot = self._normalize_slot(slot)
         if d.weekday() >= 5:
@@ -121,8 +123,16 @@ class Calendar:
             raise BookingError("That time is already in the past. Please choose a later date or time.")
         if d > (now or datetime.now()).date() + timedelta(days=self.max_days):
             raise BookingError(f"We can book up to {self.max_days} days ahead. Please choose an earlier date.")
-        if slot in self._google_busy_slots(day, fresh=True):    # an event the owner added to the calendar by hand
+        with connect(self.db_path) as conn:
+            local = {r["slot"] for r in conn.execute("SELECT slot FROM appointments WHERE day = ?", (day,))}
+        # `fresh` asks Google again (an event the owner added by hand a moment ago); otherwise a short cache is used.
+        if slot in local or slot in self._google_busy_slots(day, fresh=fresh):
             self._raise_taken(day, slot, now)
+        return slot
+
+    def book(self, *, session_id: str, name: str, contact: str, service: str, day: str, slot: str,
+             now: datetime | None = None) -> Booking:
+        slot = self.check(day, slot, now, fresh=True)
         try:
             with connect(self.db_path) as conn:
                 cur = conn.execute(
