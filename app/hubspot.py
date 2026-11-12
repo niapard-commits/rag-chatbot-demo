@@ -9,7 +9,7 @@ Besides the standard fields (first name, last name, e-mail, phone) the bot write
 creates them. If they are missing, the contact is still saved with the standard fields and a warning is logged once.
 
 The access token needs the scopes crm.objects.contacts.read and crm.objects.contacts.write
-(plus crm.schema.contacts.write and crm.schema.contacts.read only for creating the custom properties)."""
+(plus crm.schemas.contacts.write and crm.schemas.contacts.read only for creating the custom properties)."""
 import logging
 
 from .http_json import HttpError, request_json

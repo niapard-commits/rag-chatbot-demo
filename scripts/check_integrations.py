@@ -23,8 +23,8 @@ def explain_hubspot(exc: Exception) -> str:
             return "HubSpot says the token is wrong or expired (HTTP 401). Create the private app token again."
         if exc.status == 403:
             return ("HubSpot says the token has no permission for this (HTTP 403). In the private app add the scopes "
-                    "crm.objects.contacts.read, crm.objects.contacts.write, crm.schema.contacts.read, "
-                    f"crm.schema.contacts.write. Details: {exc.body[:200]}")
+                    "crm.objects.contacts.read, crm.objects.contacts.write, crm.schemas.contacts.read, "
+                    f"crm.schemas.contacts.write. Details: {exc.body[:200]}")
     return str(exc)
 
 

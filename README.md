@@ -85,7 +85,7 @@ If all attempts fail, the lead stays in SQLite. Details and what was tested: [n8
 Two ready adapters, switched on by settings in `.env`. Without the settings the bot uses SQLite only.
 
 **HubSpot (free CRM).** Create a *private app* in HubSpot, give it the scopes `crm.objects.contacts.read`/`write`
-(and `crm.schema.contacts.read`/`write` once, for the custom fields) and set `HUBSPOT_TOKEN=...`. Every lead becomes a
+(and `crm.schemas.contacts.read`/`write` once, for the custom fields) and set `HUBSPOT_TOKEN=...`. Every lead becomes a
 contact: found by e-mail (no duplicates), then updated by the stored HubSpot id. Besides name, e-mail and phone the bot
 writes five custom properties: service, lead score, score reason, note, appointment.
 `python -m scripts.check_integrations --create-properties` creates them. Without them the contact is still saved with the standard fields.
