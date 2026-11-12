@@ -175,7 +175,7 @@ chat.example.com {
 A public chat costs money with every message, so it has three protections (all in `.env`): `RATE_LIMIT_IP` (messages
 per minute for one IP address, default 40), `DAILY_MESSAGE_CAP` (all messages per day, default 1000, then the chat says
 to come back tomorrow) and the per-session limit. Also set a monthly spending limit for the API key in the provider's console.
-Leads and bookings are kept in `./data` (survives updates). Optional Qdrant: `docker compose --profile qdrant up -d`.
+Leads and bookings are kept in `./data` (survives updates). The compose file also starts a Qdrant container; the chatbot uses it only when `.env` has `RETRIEVER=qdrant` and `QDRANT_URL=http://qdrant:6333` (add `EMBEDDER=fastembed` for meaning-based search).
 `Dockerfile` and `docker-compose.yml` were written but **not built in the development sandbox** (no Docker daemon there); the app itself was run with uvicorn.
 
 ## Deploy (Render)

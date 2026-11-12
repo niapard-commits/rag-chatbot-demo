@@ -4,20 +4,22 @@ services:
     build: .
     ports: ["127.0.0.1:8000:8000"]      # reachable only from the server itself: a reverse proxy (Caddy) adds HTTPS
     env_file: .env
-    environment:
-      TRUST_PROXY: "1"                  # real visitor IP from the proxy's X-Forwarded-For header (for the per-IP limit)
     volumes:
       - ./data:/srv/chatbot/data        # SQLite: leads and appointments
       - ./secrets:/srv/chatbot/secrets:ro    # Google service account key (see README), never commit it
       - ./knowledge:/srv/chatbot/knowledge   # edit the documents without rebuilding, then POST /admin/reindex
-    mem_limit: 512m
+      - ./model_cache:/srv/chatbot/model_cache   # the local embedding model (EMBEDDER=fastembed) is downloaded once and kept here
+    environment:
+      TRUST_PROXY: "1"                  # real visitor IP from the proxy's X-Forwarded-For header (for the per-IP limit)
+      FASTEMBED_CACHE_PATH: /srv/chatbot/model_cache
+    depends_on: [qdrant]
+    mem_limit: 1536m                    # the local embedding model needs about 1 GB; 512m is enough with the default BM25 search
     restart: unless-stopped
 
-  # Optional vector database. Start it with:  docker compose --profile qdrant up -d
-  # and set RETRIEVER=qdrant and QDRANT_URL=http://qdrant:6333 in .env
+  # Vector database. It is only used when .env has RETRIEVER=qdrant and QDRANT_URL=http://qdrant:6333,
+  # otherwise the chatbot searches in memory (BM25) and this container just sits idle.
   qdrant:
     image: qdrant/qdrant:v1.12.4
-    profiles: ["qdrant"]
     volumes: ["./qdrant_data:/qdrant/storage"]
     mem_limit: 1g
     restart: unless-stopped

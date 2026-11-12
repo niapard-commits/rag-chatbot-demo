@@ -4,7 +4,7 @@ pydantic>=2
 anthropic>=0.40
 openai>=1.40
 qdrant-client>=1.12   # only needed when RETRIEVER=qdrant
-# fastembed>=0.4      # only needed when EMBEDDER=fastembed (local embedding model)
+fastembed>=0.4      # local embedding model, only used when EMBEDDER=fastembed (adds ~250 MB to the image)
 google-auth>=2.30   # only needed for Google Calendar (signs in with the service account key)
 requests>=2.31      # used by google-auth
 # tests
