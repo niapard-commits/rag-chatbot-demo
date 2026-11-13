@@ -47,6 +47,19 @@ def extract_messages(payload: dict) -> list[dict]:
     return found
 
 
+def failed_statuses(payload: dict) -> list[dict]:
+    """Delivery reports Meta could not deliver: [{id, status, code, title}]. Without these a refused reply is invisible."""
+    found = []
+    for entry in payload.get("entry") or []:
+        for change in entry.get("changes") or []:
+            for st in (change.get("value") or {}).get("statuses") or []:
+                if st.get("status") == "failed":
+                    err = (st.get("errors") or [{}])[0]
+                    found.append({"id": st.get("id"), "status": "failed", "code": err.get("code"),
+                                  "title": err.get("title") or err.get("message")})
+    return found
+
+
 class WhatsAppChannel:
     def __init__(self, access_token: str, phone_number_id: str, api_base: str = "https://graph.facebook.com/v21.0"):
         self.access_token, self.phone_number_id, self.api_base = access_token, phone_number_id, api_base.rstrip("/")

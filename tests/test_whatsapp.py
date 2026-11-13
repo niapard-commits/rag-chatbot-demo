@@ -104,3 +104,11 @@ def test_send_uses_the_graph_api(monkeypatch):
     assert seen["url"] == "https://graph.example/v1/555/messages"
     assert seen["headers"]["Authorization"] == "Bearer tok"
     assert seen["json"]["to"] == "4219" and seen["json"]["text"] == {"body": "Hi"}
+
+
+def test_failed_delivery_status_is_reported():
+    payload = {"entry": [{"changes": [{"value": {"statuses": [
+        {"id": "wamid.1", "status": "delivered"},
+        {"id": "wamid.2", "status": "failed", "errors": [{"code": 131047, "title": "Re-engagement message"}]}]}}]}]}
+    assert whatsapp.failed_statuses(payload) == [
+        {"id": "wamid.2", "status": "failed", "code": 131047, "title": "Re-engagement message"}]

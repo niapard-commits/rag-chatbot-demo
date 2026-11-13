@@ -181,6 +181,8 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 payload = await request.json()
             except ValueError:
                 raise HTTPException(400, "Not JSON")
+            for st in whatsapp.failed_statuses(payload):
+                logging.getLogger("whatsapp").warning("WhatsApp could not deliver a message: %s", st)
             for m in whatsapp.extract_messages(payload):
                 if m["from"] and wa.is_new(m["id"]):
                     background.add_task(answer_on_whatsapp, m["from"], m["text"])
