@@ -21,8 +21,9 @@ The demo business is a fictional dental clinic ("Bright Smile Dental"). Replace 
 | Handover to a human | If the bot cannot answer, the visitor's question is saved as a note together with their contact details in the CRM. |
 | CRM | Leads are saved in SQLite. If `CRM_WEBHOOK_URL` is set (n8n, Make, Zapier, any API) every lead and appointment is also POSTed there, signed with a secret header, in the background, with retries. A ready n8n workflow is included. |
 | Telegram channel | `app/telegram_bot.py` connects a Telegram bot to the same chatbot (long polling, no public URL). Every Telegram chat is one conversation with the same knowledge base, booking, CRM and rate limits as the website. Start it with `docker compose --profile telegram up -d` after putting `TELEGRAM_BOT_TOKEN` in `.env`. |
+| WhatsApp channel | `app/whatsapp.py` and the `/whatsapp/webhook` endpoint connect the Meta WhatsApp Cloud API to the same chatbot: Meta calls the webhook and the bot answers through the Graph API. Calls must be signed (`WHATSAPP_APP_SECRET`), a repeated delivery is answered once, and the per-number and daily limits apply. It works with the free test number from Meta (up to 5 allow-listed recipients, no business verification); a real client number needs a verified Meta business account. Settings: `WHATSAPP_*` in `.env.example`. |
 | LLM fallback | `LLM_PROVIDERS=anthropic,openai`: if Claude fails (timeout, rate limit, outage) the request goes to OpenAI. |
-| Handover | Folder of code, 211 tests, a live test script with a real transcript, `.env.example`, this README. |
+| Handover | Folder of code, 220 tests, a live test script with a real transcript, `.env.example`, this README. |
 
 ## How it is built
 
@@ -188,7 +189,7 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 211 tests, no network, no API keys
+python -m pytest -q       # 220 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,

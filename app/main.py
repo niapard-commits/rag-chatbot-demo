@@ -108,6 +108,9 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
             if len(q) >= settings.rate_limit_ip:
                 raise HTTPException(429, "Too many messages from your network. Please wait a moment.")
             q.append(now)
+        check_daily_cap()
+
+    def check_daily_cap() -> None:
         if settings.daily_message_cap:
             if daily["day"] != date.today():
                 daily["day"], daily["count"] = date.today(), 0
@@ -150,6 +153,7 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         sid = whatsapp.session_id_for(sender)
         try:
             check_rate(sid)
+            check_daily_cap()   # the same daily cap as the website: every message costs money on the model's API
             reply = agent.handle(sid, text[:1000])["reply"]
         except HTTPException as exc:   # a limit: its message says what to do
             reply = str(exc.detail)
