@@ -300,3 +300,21 @@ personal details.
 
 Same round: "book a cleaning tomorrow" (a Saturday, no time given yet) got "what time would you like?". A weekend, past
 or too-far day is now refused as soon as the day is known, before the visitor is asked for a time.
+
+## Second live round (13 Nov 2026): the fixes checked on the deployed demo
+
+Each check was made by hand in a new conversation on the live site, with the screenshots kept.
+
+| Check | Result |
+| --- | --- |
+| "Can I move my appointment to Friday?" | The team does that; the bot offers to pass the request on and does not ask for a new date |
+| "tomorrow" (a Saturday) | Refused at once: closed on weekends |
+| "Monday at 12:34" | Refused at once: slots are every 30 minutes |
+| Full booking: Monday 10:00, name and e-mail, then "так" | Booked; the confirmation came back in Ukrainian |
+| HubSpot | The contact was updated at 10:33 by the `chatbot` integration: appointment "Cleaning, 2026-11-16 10:00" and the score reason |
+| Google Calendar | The event "Cleaning: Anna Test" appeared on Monday 16 Nov at 10:00 |
+| A side question while a booking waits for "yes" | The question is answered, then one short reminder of the pending booking |
+| "Book a checkup on 2030-12-31" | Refused: bookings are possible up to 180 days ahead |
+
+Still open: the same question in the middle of a confirmation also shows two sources that are not about it
+(price list, services); this is cosmetic.
