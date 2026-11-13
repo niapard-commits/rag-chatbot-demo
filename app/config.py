@@ -95,3 +95,5 @@ class Settings:
     twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
     twilio_whatsapp_from: str = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
     twilio_webhook_url: str = os.getenv("TWILIO_WEBHOOK_URL", "")
+    # How long the webhook waits for the model before it gives up on answering in the response (Twilio allows ~15 s).
+    twilio_reply_wait: float = float(os.getenv("TWILIO_REPLY_WAIT", "12"))

@@ -342,3 +342,13 @@ Still open: the same question in the middle of a confirmation also shows two sou
 So the Meta route is built and tested on the receiving side (10 automated tests), but a real WhatsApp conversation
 through it has not been shown. The Twilio channel (same bot, different provider) is the route used for the
 WhatsApp demo; its live results are added below when tested.
+
+## Fifth round (13 Nov 2026): WhatsApp through the Twilio sandbox
+
+| Check | Result |
+| --- | --- |
+| Join the sandbox from a phone | Failed twice with "Failed to join sandbox", worked on the third try (a few minutes later); no change on our side |
+| Message to the sandbox number | Reached the server as a signed call (HTTP 200: the signature check passed with the real token and URL) |
+| First version: reply through the Messages API | **Refused by Twilio**: a trial account may not send free text through the API (error 21654 in the webhook log; the same request made by hand returned "trial accounts have limited parameter access") |
+| Fix | The answer now travels back in the webhook response (TwiML), which a trial account may use; the Messages API is only the fallback for a slow model |
+

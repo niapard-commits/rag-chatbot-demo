@@ -1,4 +1,5 @@
 """FastAPI application: chat endpoint, tiny web widget, admin endpoints."""
+import asyncio
 import hmac
 import logging
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -145,22 +147,24 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
           else None)
     app.state.whatsapp = wa
 
-    def answer_on_channel(channel, session_id: str, sender: str, text: str | None, log_name: str,
-                          text_only: str, error_reply: str) -> None:
-        """Runs after the webhook call was acknowledged (the provider wants an answer within seconds, the model needs longer)."""
+    def compose_reply(session_id: str, text: str | None, log_name: str, text_only: str, error_reply: str) -> str:
+        """The chatbot's answer to one WhatsApp message. Never raises: a limit or a failure becomes the reply."""
         if text is None:
-            channel.send(sender, text_only)
-            return
+            return text_only
         try:
             check_rate(session_id)
             check_daily_cap()   # the same daily cap as the website: every message costs money on the model's API
-            reply = agent.handle(session_id, text[:1000])["reply"]
+            return agent.handle(session_id, text[:1000])["reply"]
         except HTTPException as exc:   # a limit: its message says what to do
-            reply = str(exc.detail)
+            return str(exc.detail)
         except Exception:
             logging.getLogger(log_name).exception("Could not answer a WhatsApp message")
-            reply = error_reply
-        channel.send(sender, reply)
+            return error_reply
+
+    def answer_on_channel(channel, session_id: str, sender: str, text: str | None, log_name: str,
+                          text_only: str, error_reply: str) -> None:
+        """Runs after the webhook call was acknowledged (the provider wants an answer within seconds, the model needs longer)."""
+        channel.send(sender, compose_reply(session_id, text, log_name, text_only, error_reply))
 
     def answer_on_whatsapp(sender: str, text: str | None) -> None:
         answer_on_channel(wa, whatsapp.session_id_for(sender), sender, text, "whatsapp",
@@ -199,16 +203,25 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
 
     if tw:
         @app.post("/twilio/whatsapp")
-        async def twilio_incoming(request: Request, background: BackgroundTasks):
+        async def twilio_incoming(request: Request):
             params = twilio_whatsapp.parse_form(await request.body())
             if not twilio_whatsapp.signature_ok(settings.twilio_auth_token, settings.twilio_webhook_url, params,
                                                 request.headers.get("x-twilio-signature", "")):
                 raise HTTPException(401, "Bad signature")
+            xml = "application/xml"
             m = twilio_whatsapp.extract_message(params)
-            if m and tw.is_new(m["id"]):
-                background.add_task(answer_on_channel, tw, twilio_whatsapp.session_id_for(m["from"]), m["from"],
-                                    m["text"], "twilio", twilio_whatsapp.TEXT_ONLY, twilio_whatsapp.ERROR_REPLY)
-            return Response(twilio_whatsapp.EMPTY_TWIML, media_type="application/xml")   # the reply is sent separately
+            if not m or not tw.is_new(m["id"]):   # not a WhatsApp message, or Twilio repeated a call we already took
+                return Response(twilio_whatsapp.EMPTY_TWIML, media_type=xml)
+            task = asyncio.ensure_future(run_in_threadpool(
+                compose_reply, twilio_whatsapp.session_id_for(m["from"]), m["text"], "twilio",
+                twilio_whatsapp.TEXT_ONLY, twilio_whatsapp.ERROR_REPLY))
+            done, _ = await asyncio.wait({task}, timeout=settings.twilio_reply_wait)
+            if task in done:   # the usual case: the answer travels back in this response
+                return Response(twilio_whatsapp.twiml_reply(task.result()), media_type=xml)
+            # too slow for Twilio's wait: acknowledge now, send the answer when it is ready
+            loop = asyncio.get_running_loop()
+            task.add_done_callback(lambda t: loop.run_in_executor(None, tw.send, m["from"], t.result()))
+            return Response(twilio_whatsapp.EMPTY_TWIML, media_type=xml)
 
     @app.post("/admin/reindex", dependencies=[Depends(admin)])
     def reindex():

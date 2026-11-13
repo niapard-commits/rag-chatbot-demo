@@ -6,8 +6,10 @@ Twilio's REST API. Knowledge base, booking, CRM and limits are shared with every
 
   POST /twilio/whatsapp   incoming messages, form-encoded, signed with the account's auth token (X-Twilio-Signature)
 
-The answer is not given in the webhook response: the model can take longer than Twilio waits, so the call is
-acknowledged at once (empty TwiML) and the reply is sent afterwards with the Messages API.
+The answer goes back in the webhook response itself (TwiML), which also works on a Twilio trial account: a trial
+account may not send free text through the Messages API. Twilio waits about 15 seconds for the response; if the
+model needs longer, the call is acknowledged with an empty response and the reply is sent afterwards with the
+Messages API (that works on an upgraded account).
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import hmac
 import logging
 from collections import deque
 from urllib.parse import parse_qsl
+from xml.sax.saxutils import escape
 
 import requests
 
@@ -27,6 +30,11 @@ ERROR_REPLY = "Sorry, something went wrong on my side. Please try again in a mom
 MAX_CHARS = 1600   # Twilio rejects a WhatsApp body longer than 1600 characters
 EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
 API_BASE = "https://api.twilio.com/2010-04-01"
+
+
+def twiml_reply(text: str) -> str:
+    """The webhook response that makes Twilio send `text` back to the visitor."""
+    return f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{escape(text[:MAX_CHARS])}</Message></Response>'
 
 
 def session_id_for(sender: str) -> str:
