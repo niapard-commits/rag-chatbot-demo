@@ -311,9 +311,12 @@ class ChatAgent:
             return None
         # As soon as the day and the time are both known, check them. Waiting until the name and the contact are
         # collected too meant the visitor was asked for personal details first and only then heard "we are closed".
-        if state.get("date") and state.get("time"):
+        if state.get("date"):
             try:
-                self.calendar.check(state["date"], state["time"], now)
+                if state.get("time"):
+                    self.calendar.check(state["date"], state["time"], now)
+                else:
+                    self.calendar.check_day(state["date"], now)      # only a day so far: a weekend is already a no
             except BookingError as exc:
                 self._forget_pending(state, with_slot=True)
                 return str(exc) + " Which other day and time would you prefer?", None, True

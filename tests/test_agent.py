@@ -342,6 +342,12 @@ def test_impossible_time_is_refused_before_asking_for_name_and_contact(agent, wh
     assert "date" not in r["state"] and "time" not in r["state"]
 
 
+def test_weekend_day_is_refused_even_before_a_time_is_given(agent):
+    # Found live: "book a cleaning tomorrow" (a Saturday) got "what time would you like?"
+    r = say(agent, "s1", "I want to book a cleaning on 2030-01-12")
+    assert "weekend" in r["reply"] and "date" not in r["state"]
+
+
 def test_moving_an_appointment_never_starts_a_new_booking(agent, calendar, crm):
     r = say(agent, "s1", "Please reschedule my appointment")
     assert "our team" in r["reply"] and r["booking"] is None and "booking_started" not in r["state"]

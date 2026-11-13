@@ -297,3 +297,6 @@ Found in the second live round: "tomorrow at 12:34" (a Saturday) was accepted an
 because the day and time were only checked once the name and contact were known too. Now the check runs as soon as
 both day and time are known, so the visitor hears "we are closed on weekends" or "every 30 minutes" before giving any
 personal details.
+
+Same round: "book a cleaning tomorrow" (a Saturday, no time given yet) got "what time would you like?". A weekend, past
+or too-far day is now refused as soon as the day is known, before the visitor is asked for a time.

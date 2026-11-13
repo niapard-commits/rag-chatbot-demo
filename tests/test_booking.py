@@ -71,3 +71,12 @@ def test_check_reports_a_taken_slot_with_alternatives(calendar):
     book(calendar)
     with pytest.raises(BookingError, match="already taken"):
         calendar.check(TUESDAY, "10:00", NOW)
+
+
+def test_check_day_refuses_weekend_past_and_far_future(calendar):
+    from datetime import datetime
+    now = datetime(2030, 1, 2, 9, 0)
+    calendar.check_day("2030-01-08", now)
+    for day in ("2030-01-12", "2030-01-01", "2030-12-31"):
+        with pytest.raises(BookingError):
+            calendar.check_day(day, now)

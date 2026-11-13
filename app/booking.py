@@ -107,6 +107,18 @@ class Calendar:
             free.append(s)
         return free
 
+    def check_day(self, day: str, now: datetime | None = None) -> None:
+        """Raise BookingError if no appointment can be made on this day at all (weekend, past, too far ahead).
+        Used when the visitor has named a day but not yet a time."""
+        d = self._parse_day(day)
+        today = (now or datetime.now()).date()
+        if d.weekday() >= 5:
+            raise BookingError("We are closed on weekends. Please choose a weekday (Monday to Friday).")
+        if d < today:
+            raise BookingError("That date is already in the past. Please choose a later date.")
+        if d > today + timedelta(days=self.max_days):
+            raise BookingError(f"We can book up to {self.max_days} days ahead. Please choose an earlier date.")
+
     def check(self, day: str, slot: str, now: datetime | None = None, fresh: bool = False) -> str:
         """Raise BookingError (with a message that is safe to show) if this day and time cannot be booked.
         Returns the normalised slot. The agent calls this BEFORE it asks the visitor to confirm, so the visitor is
