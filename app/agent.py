@@ -309,6 +309,14 @@ class ChatAgent:
         """Returns None or (text, booking_info, replaces_the_model_reply)."""
         if not state.get("booking_started"):
             return None
+        # As soon as the day and the time are both known, check them. Waiting until the name and the contact are
+        # collected too meant the visitor was asked for personal details first and only then heard "we are closed".
+        if state.get("date") and state.get("time"):
+            try:
+                self.calendar.check(state["date"], state["time"], now)
+            except BookingError as exc:
+                self._forget_pending(state, with_slot=True)
+                return str(exc) + " Which other day and time would you prefer?", None, True
         contact = state.get("email") or state.get("phone")
         if not (state.get("service") and state.get("date") and state.get("time") and state.get("name") and contact):
             return None

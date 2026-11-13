@@ -292,3 +292,8 @@ empty but the bot still remembered the earlier conversation (it mentioned a toot
 Now every page load starts a new conversation.
 Known warning in the log: the Python client is 1.20 and the server 1.12.4 (minor versions differ by more than one);
 search works, the server image can be updated later.
+
+Found in the second live round: "tomorrow at 12:34" (a Saturday) was accepted and the bot asked for a name first,
+because the day and time were only checked once the name and contact were known too. Now the check runs as soon as
+both day and time are known, so the visitor hears "we are closed on weekends" or "every 30 minutes" before giving any
+personal details.

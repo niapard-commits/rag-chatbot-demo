@@ -331,6 +331,17 @@ def test_impossible_times_are_refused_before_asking_to_confirm(agent, calendar, 
     assert calendar.taken("2030-01-08") == set() and calendar.taken("2030-01-04") == set()
 
 
+@pytest.mark.parametrize("when,message", [
+    ("2030-01-08 12:34", "every 30 minutes"),
+    ("2030-01-12 10:00", "weekend"),
+])
+def test_impossible_time_is_refused_before_asking_for_name_and_contact(agent, when, message):
+    # Found live: "tomorrow at 12:34" was accepted and the bot asked for a name first.
+    r = say(agent, "s1", f"I want to book a cleaning on {when.split()[0]} at {when.split()[1]}")
+    assert message in r["reply"] and "Which other day and time" in r["reply"]
+    assert "date" not in r["state"] and "time" not in r["state"]
+
+
 def test_moving_an_appointment_never_starts_a_new_booking(agent, calendar, crm):
     r = say(agent, "s1", "Please reschedule my appointment")
     assert "our team" in r["reply"] and r["booking"] is None and "booking_started" not in r["state"]
