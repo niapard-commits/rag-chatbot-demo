@@ -351,4 +351,9 @@ WhatsApp demo; its live results are added below when tested.
 | Message to the sandbox number | Reached the server as a signed call (HTTP 200: the signature check passed with the real token and URL) |
 | First version: reply through the Messages API | **Refused by Twilio**: a trial account may not send free text through the API (error 21654 in the webhook log; the same request made by hand returned "trial accounts have limited parameter access") |
 | Fix | The answer now travels back in the webhook response (TwiML), which a trial account may use; the Messages API is only the fallback for a slow model |
+| Message "How much is teeth whitening?" from a phone to the sandbox number, after the fix | Answered in WhatsApp from the knowledge base: 220 EUR, about 60 minutes, short consultation first (screenshot kept) |
+
+Limits of the sandbox: it is a shared Twilio number, a visitor must send `join <code>` first and rejoin every 3 days,
+and a trial account has about 100 free WhatsApp messages. A real client number needs Meta business verification, which
+was not possible here (see the fourth round).
 
