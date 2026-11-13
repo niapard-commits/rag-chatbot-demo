@@ -8,7 +8,7 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -19,7 +19,7 @@ from .config import BASE_DIR, Settings
 from .crm import CRM
 from .gcal import GoogleCalendarClient, service_account_token_provider
 from .hubspot import HubSpot
-from . import whatsapp
+from . import twilio_whatsapp, whatsapp
 from .db import init_db
 from .llm import build_llm
 from .rag.retriever import build_retriever
@@ -145,22 +145,26 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
           else None)
     app.state.whatsapp = wa
 
-    def answer_on_whatsapp(sender: str, text: str | None) -> None:
-        """Runs after the webhook call was acknowledged (Meta wants an answer within seconds, the model needs longer)."""
+    def answer_on_channel(channel, session_id: str, sender: str, text: str | None, log_name: str,
+                          text_only: str, error_reply: str) -> None:
+        """Runs after the webhook call was acknowledged (the provider wants an answer within seconds, the model needs longer)."""
         if text is None:
-            wa.send(sender, whatsapp.TEXT_ONLY)
+            channel.send(sender, text_only)
             return
-        sid = whatsapp.session_id_for(sender)
         try:
-            check_rate(sid)
+            check_rate(session_id)
             check_daily_cap()   # the same daily cap as the website: every message costs money on the model's API
-            reply = agent.handle(sid, text[:1000])["reply"]
+            reply = agent.handle(session_id, text[:1000])["reply"]
         except HTTPException as exc:   # a limit: its message says what to do
             reply = str(exc.detail)
         except Exception:
-            logging.getLogger("whatsapp").exception("Could not answer a WhatsApp message")
-            reply = whatsapp.ERROR_REPLY
-        wa.send(sender, reply)
+            logging.getLogger(log_name).exception("Could not answer a WhatsApp message")
+            reply = error_reply
+        channel.send(sender, reply)
+
+    def answer_on_whatsapp(sender: str, text: str | None) -> None:
+        answer_on_channel(wa, whatsapp.session_id_for(sender), sender, text, "whatsapp",
+                          whatsapp.TEXT_ONLY, whatsapp.ERROR_REPLY)
 
     if wa:
         @app.get("/whatsapp/webhook")
@@ -187,6 +191,24 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
                 if m["from"] and wa.is_new(m["id"]):
                     background.add_task(answer_on_whatsapp, m["from"], m["text"])
             return {"ok": True}
+
+    tw = (twilio_whatsapp.TwilioChannel(settings.twilio_account_sid, settings.twilio_auth_token,
+                                        settings.twilio_whatsapp_from)
+          if settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_webhook_url else None)
+    app.state.twilio = tw
+
+    if tw:
+        @app.post("/twilio/whatsapp")
+        async def twilio_incoming(request: Request, background: BackgroundTasks):
+            params = twilio_whatsapp.parse_form(await request.body())
+            if not twilio_whatsapp.signature_ok(settings.twilio_auth_token, settings.twilio_webhook_url, params,
+                                                request.headers.get("x-twilio-signature", "")):
+                raise HTTPException(401, "Bad signature")
+            m = twilio_whatsapp.extract_message(params)
+            if m and tw.is_new(m["id"]):
+                background.add_task(answer_on_channel, tw, twilio_whatsapp.session_id_for(m["from"]), m["from"],
+                                    m["text"], "twilio", twilio_whatsapp.TEXT_ONLY, twilio_whatsapp.ERROR_REPLY)
+            return Response(twilio_whatsapp.EMPTY_TWIML, media_type="application/xml")   # the reply is sent separately
 
     @app.post("/admin/reindex", dependencies=[Depends(admin)])
     def reindex():

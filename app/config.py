@@ -88,3 +88,10 @@ class Settings:
     whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
     whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")
     whatsapp_api_base: str = os.getenv("WHATSAPP_API_BASE", "https://graph.facebook.com/v21.0")
+    # WhatsApp through Twilio (sandbox or a registered sender). On when TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and
+    # TWILIO_WEBHOOK_URL are set. TWILIO_WEBHOOK_URL is the public address of POST /twilio/whatsapp exactly as it is
+    # entered in the Twilio console: the signature check is calculated over it.
+    twilio_account_sid: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+    twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+    twilio_whatsapp_from: str = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+    twilio_webhook_url: str = os.getenv("TWILIO_WEBHOOK_URL", "")

@@ -328,3 +328,17 @@ Still open: the same question in the middle of a confirmation also shows two sou
 | Full booking on the live site (name, e-mail, "yes") | The bot booked it; n8n received the lead (score hot) and the appointment, one row each, and one hot-lead alert row |
 | Hot-lead alert in Telegram | The message "HOT LEAD: name (contact), service, reason" arrived in the owner's Telegram chat |
 | Telegram chat with the bot, "How much is teeth whitening" | Answered from the knowledge base: 220 EUR, about 60 minutes, consultation first |
+
+## Fourth round (13 Nov 2026): WhatsApp through Meta
+
+| Check | Result |
+| --- | --- |
+| Webhook address check (GET with the verify token) | Passed |
+| Message written from a phone to the Meta test number | Arrived at the server as a signed POST; the bot built an answer from the knowledge base |
+| Reply delivery to the phone | **Not delivered.** Meta's delivery report: error 131031, "Business Account locked" (a lock on the test business account, not a code error) |
+| Own number (Ukrainian SIM, SMS code confirmed) with a new business account | **Blocked** by Meta: error 2494070, "business does not comply with WhatsApp policy"; business verification was not available |
+| Appeal | Sent to Meta Direct Support, case 29185728764409553, no decision yet |
+
+So the Meta route is built and tested on the receiving side (10 automated tests), but a real WhatsApp conversation
+through it has not been shown. The Twilio channel (same bot, different provider) is the route used for the
+WhatsApp demo; its live results are added below when tested.
