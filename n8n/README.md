@@ -29,6 +29,14 @@ curl -X POST https://your-n8n.example.com/webhook/chatbot-events \
   -d '{"event":"lead","session_id":"test1","name":"Anna Novak","email":"anna@example.com","service":"Check-up"}'
 ```
 
+## Live setup used for the demo (Docker Compose)
+
+The `n8n` service in `docker-compose.yml` runs n8n next to the bot. It is not public: the bot calls it inside the Docker network and you open the editor through an SSH tunnel (`ssh -L 5678:localhost:5678 user@server`, then `http://localhost:5678`).
+
+- `.env`: `CRM_WEBHOOK_URL=http://n8n:5678/webhook/chatbot-events` and `CRM_WEBHOOK_SECRET=<the same secret as in the "Secret is correct?" node>`.
+- In the running demo the three stand-in HTTP nodes are replaced by n8n **Data Table** nodes (no extra credentials needed): `chatbot_leads` and `chatbot_appointments` (upsert by `session_id`, so a lead that gets more details is updated, not duplicated) and `chatbot_hot_lead_alerts` (one row per hot lead, where a Slack or email node would go).
+- Tested live: a wrong secret gives 401; one real booking on the demo site produced one row in each of the lead and appointment tables and one hot-lead alert; sending the same lead twice kept a single row.
+
 ## Events sent by the bot
 
 ```json
