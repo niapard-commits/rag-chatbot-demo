@@ -81,3 +81,10 @@ class Settings:
             "SERVICES", "Check-up,Cleaning,Teeth whitening,Filling,Orthodontic consultation").split(",") if x.strip()
     ])
     business_name: str = os.getenv("BUSINESS_NAME", "Bright Smile Dental")
+    # WhatsApp (Meta Cloud API). The channel is on when WHATSAPP_VERIFY_TOKEN, WHATSAPP_ACCESS_TOKEN and
+    # WHATSAPP_PHONE_NUMBER_ID are all set. WHATSAPP_APP_SECRET makes the webhook refuse calls that Meta did not sign.
+    whatsapp_verify_token: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+    whatsapp_access_token: str = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+    whatsapp_phone_number_id: str = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+    whatsapp_app_secret: str = os.getenv("WHATSAPP_APP_SECRET", "")
+    whatsapp_api_base: str = os.getenv("WHATSAPP_API_BASE", "https://graph.facebook.com/v21.0")

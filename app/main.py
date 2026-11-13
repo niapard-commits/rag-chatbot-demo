@@ -7,7 +7,8 @@ import os
 import time
 from collections import defaultdict, deque
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
@@ -18,6 +19,7 @@ from .config import BASE_DIR, Settings
 from .crm import CRM
 from .gcal import GoogleCalendarClient, service_account_token_provider
 from .hubspot import HubSpot
+from . import whatsapp
 from .db import init_db
 from .llm import build_llm
 from .rag.retriever import build_retriever
@@ -133,6 +135,52 @@ def create_app(settings: Settings | None = None, llm=None) -> FastAPI:
         check_rate(body.session_id)
         check_public_limits(request)
         return agent.handle(body.session_id, body.message)
+
+    wa = (whatsapp.WhatsAppChannel(settings.whatsapp_access_token, settings.whatsapp_phone_number_id,
+                                   settings.whatsapp_api_base)
+          if settings.whatsapp_verify_token and settings.whatsapp_access_token and settings.whatsapp_phone_number_id
+          else None)
+    app.state.whatsapp = wa
+
+    def answer_on_whatsapp(sender: str, text: str | None) -> None:
+        """Runs after the webhook call was acknowledged (Meta wants an answer within seconds, the model needs longer)."""
+        if text is None:
+            wa.send(sender, whatsapp.TEXT_ONLY)
+            return
+        sid = whatsapp.session_id_for(sender)
+        try:
+            check_rate(sid)
+            reply = agent.handle(sid, text[:1000])["reply"]
+        except HTTPException as exc:   # a limit: its message says what to do
+            reply = str(exc.detail)
+        except Exception:
+            logging.getLogger("whatsapp").exception("Could not answer a WhatsApp message")
+            reply = whatsapp.ERROR_REPLY
+        wa.send(sender, reply)
+
+    if wa:
+        @app.get("/whatsapp/webhook")
+        def whatsapp_verify(request: Request):
+            q = request.query_params   # Meta sends hub.mode, hub.verify_token and hub.challenge once, when the webhook is saved
+            if q.get("hub.mode") == "subscribe" and hmac.compare_digest(q.get("hub.verify_token", ""),
+                                                                         settings.whatsapp_verify_token):
+                return PlainTextResponse(q.get("hub.challenge", ""))
+            raise HTTPException(403, "Verification failed")
+
+        @app.post("/whatsapp/webhook")
+        async def whatsapp_incoming(request: Request, background: BackgroundTasks):
+            raw = await request.body()
+            if settings.whatsapp_app_secret and not whatsapp.signature_ok(
+                    settings.whatsapp_app_secret, raw, request.headers.get("x-hub-signature-256", "")):
+                raise HTTPException(401, "Bad signature")
+            try:
+                payload = await request.json()
+            except ValueError:
+                raise HTTPException(400, "Not JSON")
+            for m in whatsapp.extract_messages(payload):
+                if m["from"] and wa.is_new(m["id"]):
+                    background.add_task(answer_on_whatsapp, m["from"], m["text"])
+            return {"ok": True}
 
     @app.post("/admin/reindex", dependencies=[Depends(admin)])
     def reindex():
