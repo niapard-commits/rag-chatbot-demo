@@ -20,8 +20,9 @@ The demo business is a fictional dental clinic ("Bright Smile Dental"). Replace 
 | Any language | The question is rewritten into an English search query when needed, so Ukrainian, Slovak or any other language finds the English documents. Booking messages are translated for the visitor. |
 | Handover to a human | If the bot cannot answer, the visitor's question is saved as a note together with their contact details in the CRM. |
 | CRM | Leads are saved in SQLite. If `CRM_WEBHOOK_URL` is set (n8n, Make, Zapier, any API) every lead and appointment is also POSTed there, signed with a secret header, in the background, with retries. A ready n8n workflow is included. |
+| Telegram channel | `app/telegram_bot.py` connects a Telegram bot to the same chatbot (long polling, no public URL). Every Telegram chat is one conversation with the same knowledge base, booking, CRM and rate limits as the website. Start it with `docker compose --profile telegram up -d` after putting `TELEGRAM_BOT_TOKEN` in `.env`. |
 | LLM fallback | `LLM_PROVIDERS=anthropic,openai`: if Claude fails (timeout, rate limit, outage) the request goes to OpenAI. |
-| Handover | Folder of code, 118 tests, a live test script with a real transcript, `.env.example`, this README. |
+| Handover | Folder of code, 211 tests, a live test script with a real transcript, `.env.example`, this README. |
 
 ## How it is built
 
@@ -187,7 +188,7 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 203 tests, no network, no API keys
+python -m pytest -q       # 211 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,

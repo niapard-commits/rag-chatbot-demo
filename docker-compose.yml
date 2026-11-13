@@ -24,6 +24,20 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
+  # Telegram channel (optional, off by default). Needs TELEGRAM_BOT_TOKEN in .env (a bot made with @BotFather).
+  # Start it with:  docker compose --profile telegram up -d
+  # It reads Telegram by long polling (no public URL needed) and passes every message to the chatbot above.
+  telegram:
+    build: .
+    command: ["python", "-m", "app.telegram_bot"]
+    env_file: .env
+    environment:
+      CHATBOT_URL: http://chatbot:8000
+    depends_on: [chatbot]
+    mem_limit: 128m
+    restart: unless-stopped
+    profiles: ["telegram"]
+
   # Workflow automation. Not public: the chatbot calls it inside the Docker network
   # (CRM_WEBHOOK_URL=http://n8n:5678/webhook/chatbot-events) and you open the editor through an SSH tunnel:
   #   ssh -L 5678:localhost:5678 <user>@<server>   then   http://localhost:5678
