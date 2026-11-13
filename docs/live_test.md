@@ -318,3 +318,13 @@ Each check was made by hand in a new conversation on the live site, with the scr
 
 Still open: the same question in the middle of a confirmation also shows two sources that are not about it
 (price list, services); this is cosmetic.
+
+## Third live round (13 Nov 2026): n8n and Telegram connected
+
+| Check | Result |
+| --- | --- |
+| n8n workflow, wrong secret | HTTP 401, nothing is saved |
+| n8n workflow, same lead sent twice | One row: the lead is updated by `session_id`, not duplicated |
+| Full booking on the live site (name, e-mail, "yes") | The bot booked it; n8n received the lead (score hot) and the appointment, one row each, and one hot-lead alert row |
+| Hot-lead alert in Telegram | The message "HOT LEAD: name (contact), service, reason" arrived in the owner's Telegram chat |
+| Telegram chat with the bot, "How much is teeth whitening" | Answered from the knowledge base: 220 EUR, about 60 minutes, consultation first |
