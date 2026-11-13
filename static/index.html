@@ -47,9 +47,9 @@
 <script>
 const log = document.getElementById("log"), form = document.getElementById("form"),
       text = document.getElementById("text"), send = document.getElementById("send");
-let sid;
-try { sid = localStorage.getItem("sid"); } catch (e) {}
-if (!sid) { sid = "s" + Math.random().toString(36).slice(2, 12); try { localStorage.setItem("sid", sid); } catch (e) {} }
+// A new conversation on every page load. The chat window starts empty, so the bot must not remember an earlier visit
+// that the visitor cannot see (it used to: the session id was kept in localStorage).
+const sid = "s" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
 
 function add(cls, content, sources) {
   const el = document.createElement("div");

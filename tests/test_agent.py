@@ -352,3 +352,9 @@ def test_change_intent_from_the_model_ignores_booking_details(settings, calendar
 def test_page_stops_browser_auto_translation():
     html = open("static/index.html", encoding="utf-8").read()
     assert 'translate="no"' in html and 'name="google" content="notranslate"' in html
+
+
+def test_page_starts_a_new_conversation_on_every_load():
+    # The chat window is empty after a reload, so the bot must not remember the earlier visit.
+    html = open("static/index.html", encoding="utf-8").read()
+    assert "localStorage.getItem" not in html and "localStorage.setItem" not in html

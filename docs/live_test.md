@@ -274,3 +274,21 @@ Also checked and fine: prompt-injection attempts, "write a poem", diagnosis and 
 invalid dates and e-mails, HTML / SQL / template text (shown as plain text, page title unchanged), 6 000 and 5 000
 character messages, and the rate limit (28 requests passed, the next 12 got HTTP 429).
 The fixes above are covered by unit tests (scripted and offline model); they have not yet been re-run against the live model.
+
+## Qdrant on the live server (13 Nov 2026)
+
+Qdrant 1.12.4 runs next to the chatbot in Docker, with `RETRIEVER=qdrant` and `EMBEDDER=fastembed`
+(`BAAI/bge-small-en-v1.5`, loaded from Hugging Face on the first start). `/health` shows `QdrantRetriever`,
+`search_degraded: false`, HubSpot and Google Calendar still `true`. Questions in other words than the documents:
+
+| Question | Result |
+| --- | --- |
+| "How can I make my teeth lighter?" | finds *Teeth whitening* (the word "whitening" is not in the question) |
+| "I have a terrible toothache" | finds the emergency care answer |
+| "Do you sell used cars?" (new conversation) | "No, we don't sell cars", nothing from the knowledge base is claimed |
+
+Found and fixed during this test: the page kept its session id in `localStorage`, so after a reload the chat looked
+empty but the bot still remembered the earlier conversation (it mentioned a toothache the visitor had not just written).
+Now every page load starts a new conversation.
+Known warning in the log: the Python client is 1.20 and the server 1.12.4 (minor versions differ by more than one);
+search works, the server image can be updated later.
