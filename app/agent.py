@@ -28,6 +28,18 @@ EMAIL_RE = re.compile(r"^\w[\w.+-]*@[\w-]+(?:\.[\w-]+)+$")
 PHONE_RE = re.compile(r"^[+(]?[\d\s().-]{6,24}$")
 FALLBACK_REPLY = ("Sorry, I am having technical trouble right now. Please try again in a minute "
                   "or leave your name and phone number and our team will call you back.")
+FALLBACK_BY_LANGUAGE = {
+    "uk": "Вибачте, зараз виникли технічні неполадки. Спробуйте ще раз за хвилину або залиште ім'я та номер телефону, і наша команда вам зателефонує.",
+    "ru": "Извините, сейчас технические неполадки. Попробуйте ещё раз через минуту или оставьте имя и номер телефона, и наша команда вам перезвонит.",
+    "sk": "Ospravedlňujeme sa, momentálne máme technický problém. Skúste to znova o chvíľu alebo nám nechajte meno a telefónne číslo a náš tím sa vám ozve.",
+    "pl": "Przepraszamy, mamy teraz problem techniczny. Spróbuj ponownie za chwilę lub zostaw imię i numer telefonu, a nasz zespół oddzwoni.",
+    "de": "Entschuldigung, es gibt gerade ein technisches Problem. Bitte versuchen Sie es in einer Minute erneut oder hinterlassen Sie Name und Telefonnummer, wir rufen Sie zurück.",
+}
+
+
+def fallback_reply(language: str | None) -> str:
+    """The apology in the visitor's language when we know it; English otherwise."""
+    return FALLBACK_BY_LANGUAGE.get((language or "").lower(), FALLBACK_REPLY)
 
 
 INTENTS = ("question", "lead", "book", "change")
@@ -104,7 +116,9 @@ def parse_model_output(raw: str) -> dict:
     plain = strip_markup(re.sub(r"```(?:json)?", "", text.split("{", 1)[0]))
     if not plain and (salvaged := _salvage_reply(text)):
         return salvaged
-    return {"reply": plain or FALLBACK_REPLY, "intent": "question", "fields": {}}
+    if not plain:
+        return {"reply": FALLBACK_REPLY, "intent": "question", "fields": {}, "unusable": True}
+    return {"reply": plain, "intent": "question", "fields": {}}
 
 
 # A short answer to "Shall I book it? (yes / no)" in the languages our visitors write. The model also reports
@@ -251,11 +265,21 @@ class ChatAgent:
                     again = parse_model_output(self.llm.complete(system, messages))
                     if not again.get("repaired") or again["fields"]:
                         parsed = again
+            if parsed.get("unusable"):
+                # Found in a live Telegram test: the model answered with nothing usable and the visitor got the
+                # English apology without a trace in the log. Ask once more, and log it if that fails too.
+                again = parse_model_output(self.llm.complete(system, messages))
+                if not again.get("unusable"):
+                    parsed = again
+                else:
+                    log.warning("The model returned no usable reply twice; the visitor gets the apology text")
         except LLMError as exc:
             log.error("All LLM providers failed: %s", exc)
-            return {"reply": FALLBACK_REPLY, "state": self._public_state(state), "sources": [],
+            return {"reply": fallback_reply(state.get("language")), "state": self._public_state(state), "sources": [],
                     "provider": None, "booking": None}
 
+        if parsed.get("unusable"):
+            parsed["reply"] = fallback_reply(state.get("language"))
         confirm = parsed["fields"].get("confirm") if isinstance(parsed["fields"], dict) else None
         if state.get("_pending") and (direct := short_answer(message)) is not None:
             confirm = direct                      # a plain "так" / "yes" / "no" is read by code, in any language
