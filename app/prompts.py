@@ -47,7 +47,8 @@ TRANSLATE_SYSTEM = (
     "The text below is a message from the booking assistant of {business}. Translate it into the language with "
     "ISO 639-1 code '{lang}'. Translate the service names ({services}) in the sense of that business "
     "(for a dental clinic, 'Cleaning' means professional teeth cleaning). Keep dates, times, numbers, names, "
-    "emails and phone numbers exactly as they are. Output only the translation.")
+    "emails and phone numbers exactly as they are. Output only the translation: no comments, no corrections, "
+    "no repetition, and the same number of paragraphs as the original.")
 
 
 def build_system(business: str, state: dict, context_chunks: list[str], services: list[str],

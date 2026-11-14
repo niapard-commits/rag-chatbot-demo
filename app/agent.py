@@ -121,6 +121,20 @@ _YES_PHRASES = {"book it", "go ahead", "do it", "please do", "sounds good", "loo
                 "that is correct", "thats right", "thats correct"}
 
 
+_META_LINE = re.compile(r"^\W*(wait|note|correction|corrected|correcting|translation|переклад|примітка)\b", re.I)
+
+
+def clean_translation(source: str, translated: str) -> str:
+    """A model sometimes thinks aloud inside the translation ("Wait, correcting the double question mark: ...") and
+    repeats the message. Found in a live Ukrainian test. Keep only as many paragraphs as the source had and drop
+    meta lines; if nothing sensible is left, the caller falls back to the English text."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", translated.strip()) if p.strip()]
+    paragraphs = [p for p in paragraphs if not _META_LINE.match(p)]
+    wanted = len([p for p in re.split(r"\n\s*\n", source.strip()) if p.strip()]) or 1
+    out = "\n\n".join(paragraphs[:wanted])
+    return re.sub(r"([?!.])\1+", r"\1", out)
+
+
 def short_answer(message: str) -> bool | None:
     """True / False for a short clear yes / no, None for anything else (a question, new details, a longer text)."""
     words = re.findall(r"[^\W_]+", message.lower().replace("'", "").replace("\u2019", ""))
@@ -285,10 +299,10 @@ class ChatAgent:
         if not lang or lang == "en":
             return text
         try:
-            return self.llm.complete(TRANSLATE_SYSTEM.format(business=self.settings.business_name, lang=lang,
-                                                      services=", ".join(self.settings.services)),
-                              [{"role": "user", "content": text}],
-                                     structured=False).strip() or text
+            translated = self.llm.complete(TRANSLATE_SYSTEM.format(business=self.settings.business_name, lang=lang,
+                                                                    services=", ".join(self.settings.services)),
+                                           [{"role": "user", "content": text}], structured=False)
+            return clean_translation(text, translated) or text
         except LLMError as exc:
             log.warning("Translation failed, sending English text: %s", exc)
             return text
