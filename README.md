@@ -23,7 +23,7 @@ The demo business is a fictional dental clinic ("Bright Smile Dental"). Replace 
 | Telegram channel | `app/telegram_bot.py` connects a Telegram bot to the same chatbot (long polling, no public URL). Every Telegram chat is one conversation with the same knowledge base, booking, CRM and rate limits as the website. Start it with `docker compose --profile telegram up -d` after putting `TELEGRAM_BOT_TOKEN` in `.env`. |
 | WhatsApp channel | Two interchangeable adapters feed the same chatbot (knowledge base, booking, CRM, limits). `app/twilio_whatsapp.py` and `POST /twilio/whatsapp` connect WhatsApp through Twilio (the sandbox for testing; calls must carry a valid `X-Twilio-Signature`, a repeated delivery is answered once, the answer travels back in the webhook response, which works on a trial account; if the model is slower than Twilio's wait it is sent afterwards through the Messages API, which needs an upgraded account). `app/whatsapp.py` and `/whatsapp/webhook` connect the Meta WhatsApp Cloud API. Each is off until its settings exist (`TWILIO_*`, `WHATSAPP_*` in `.env.example`). **Status of the Meta route:** receiving and answering work (signed webhook, answer from the knowledge base); delivery of the reply is blocked on Meta's side (error 131031 on the test number, error 2494070 when a new business account is created; an appeal is open) because a real client number needs Meta business verification. See `docs/live_test.md`. |
 | LLM fallback | `LLM_PROVIDERS=anthropic,openai`: if Claude fails (timeout, rate limit, outage) the request goes to OpenAI. |
-| Handover | Folder of code, 220 tests, a live test script with a real transcript, `.env.example`, this README. |
+| Handover | Folder of code, 233 tests, a live test script with a real transcript, `.env.example`, this README. |
 
 ## How it is built
 
@@ -189,7 +189,7 @@ redeploy, so leads and bookings in SQLite are lost there: fine for a staging dem
 ## Tests
 
 ```bash
-python -m pytest -q       # 220 tests, no network, no API keys
+python -m pytest -q       # 233 tests, no network, no API keys
 ```
 
 They cover retrieval, booking rules (double booking, weekends, opening hours, past times), the confirmation step,
